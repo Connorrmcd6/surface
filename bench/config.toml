@@ -33,3 +33,18 @@ provider = "anthropic"
 model_id = "claude-opus-4-8"
 input_per_mtok = 5.00
 output_per_mtok = 25.00
+
+# Cross-provider adapters (#107) for the multi-turn generalization sweep. Need the [providers] extra
+# (`uv sync --extra providers`) + OPENAI_API_KEY / GEMINI_API_KEY. TODO at first smoke: pin the exact
+# model ids and per-Mtok pricing below (placeholders).
+[models.gpt]
+provider = "openai"
+model_id = "gpt-5.1"          # TODO verify exact id at smoke time
+input_per_mtok = 0.00
+output_per_mtok = 0.00
+
+[models.gemini]
+provider = "gemini"
+model_id = "gemini-2.5-pro"   # TODO verify exact id at smoke time
+input_per_mtok = 0.00
+output_per_mtok = 0.00

@@ -10,6 +10,8 @@ dependencies = [
 [project.optional-dependencies]
 plots = ["matplotlib>=3.8"]
 dev = ["pytest>=8"]
+# Cross-provider adapters (#107); not needed for the Anthropic-only or offline paths.
+providers = ["openai>=1.0", "google-genai>=0.3"]
 
 [tool.setuptools.packages.find]
 include = ["surface_bench*"]

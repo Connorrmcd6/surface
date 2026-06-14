@@ -11,6 +11,7 @@ tokens are where the cost of reconciling a stale doc against the code actually s
 
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass, field
 from typing import Any, Protocol
@@ -249,6 +250,198 @@ class AnthropicModel:
         return _step_from_anthropic(resp)
 
 
+# ---- OpenAI tool-use translation ------------------------------------------------------------
+# Same pattern as the Anthropic block: pure converters between the neutral loop format and the
+# OpenAI Chat Completions wire format, unit-tested without a network call. NOTE for smoke time:
+# newer GPT models may need `max_completion_tokens` instead of `max_tokens` and may reject a custom
+# `temperature` — adjust in OpenAIModel.step when the exact model id is pinned.
+
+
+def _json_args(raw: str) -> dict:
+    try:
+        return json.loads(raw) if raw else {}
+    except json.JSONDecodeError:
+        return {}  # a malformed tool call becomes empty args; the loop feeds back an error and recovers
+
+
+def _openai_tools(tools: list[dict]) -> list[dict]:
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": t["name"],
+                "description": t["description"],
+                "parameters": t["parameters"],
+            },
+        }
+        for t in tools
+    ]
+
+
+def _openai_messages(system: str, messages: list[dict]) -> list[dict]:
+    out: list[dict] = [{"role": "system", "content": system}]
+    for m in messages:
+        if m["role"] == "user":
+            out.append({"role": "user", "content": m["content"]})
+        elif m["role"] == "assistant":
+            step = m["step"]
+            msg: dict = {"role": "assistant", "content": step.text or None}
+            if step.tool_calls:
+                msg["tool_calls"] = [
+                    {
+                        "id": tc.id,
+                        "type": "function",
+                        "function": {"name": tc.name, "arguments": json.dumps(tc.args)},
+                    }
+                    for tc in step.tool_calls
+                ]
+            out.append(msg)
+        elif m["role"] == "tool":
+            for r in m["results"]:
+                out.append({"role": "tool", "tool_call_id": r["id"], "content": r["content"]})
+    return out
+
+
+def _step_from_openai(resp) -> Step:
+    choice = resp.choices[0]
+    msg = choice.message
+    calls = [
+        ToolCall(id=tc.id, name=tc.function.name, args=_json_args(tc.function.arguments))
+        for tc in (msg.tool_calls or [])
+    ]
+    u = getattr(resp, "usage", None)
+    return Step(
+        text=msg.content or "",
+        tool_calls=calls,
+        input_tokens=getattr(u, "prompt_tokens", 0) if u else 0,
+        output_tokens=getattr(u, "completion_tokens", 0) if u else 0,
+        stop_reason=getattr(choice, "finish_reason", "") or "",
+    )
+
+
+class OpenAIModel:
+    def __init__(self, name: str, model_id: str, temperature: float, max_tokens: int):
+        try:
+            from openai import OpenAI
+        except ImportError as e:  # pragma: no cover
+            raise SystemExit("pip install openai  (uv sync --extra providers)") from e
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise SystemExit("OPENAI_API_KEY is not set")
+        self.name = name
+        self.model_id = model_id
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self._client = OpenAI(timeout=120.0, max_retries=4)
+
+    def step(self, system: str, messages: list[dict], tools: list[dict]) -> Step:
+        resp = self._client.chat.completions.create(
+            model=self.model_id,
+            messages=_openai_messages(system, messages),
+            tools=_openai_tools(tools),
+            tool_choice="auto",
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+        )
+        return _step_from_openai(resp)
+
+
+# ---- Gemini tool-use translation ------------------------------------------------------------
+# google-genai uses "model"/"user" roles, a system_instruction, and function_call/function_response
+# parts (matched by function *name*, not an id). The converters emit plain dicts (the SDK coerces
+# them), so they stay import-free and testable. NOTE for smoke time: verify the SDK accepts dict-form
+# tools/contents for the pinned version; if not, wrap with google.genai.types in GeminiModel.step.
+
+
+def _gemini_tools(tools: list[dict]) -> list[dict]:
+    return [
+        {
+            "function_declarations": [
+                {"name": t["name"], "description": t["description"], "parameters": t["parameters"]}
+                for t in tools
+            ]
+        }
+    ]
+
+
+def _gemini_contents(messages: list[dict]) -> list[dict]:
+    contents: list[dict] = []
+    id_to_name: dict[str, str] = {}  # Gemini keys function_response by name, not id
+    for m in messages:
+        if m["role"] == "user":
+            contents.append({"role": "user", "parts": [{"text": m["content"]}]})
+        elif m["role"] == "assistant":
+            step = m["step"]
+            parts: list[dict] = []
+            if step.text:
+                parts.append({"text": step.text})
+            for tc in step.tool_calls:
+                parts.append({"function_call": {"name": tc.name, "args": tc.args}})
+                id_to_name[tc.id] = tc.name
+            contents.append({"role": "model", "parts": parts})
+        elif m["role"] == "tool":
+            parts = [
+                {
+                    "function_response": {
+                        "name": id_to_name.get(r["id"], r.get("name", "")),
+                        "response": {"result": r["content"]},
+                    }
+                }
+                for r in m["results"]
+            ]
+            contents.append({"role": "user", "parts": parts})
+    return contents
+
+
+def _step_from_gemini(resp) -> Step:
+    cand = resp.candidates[0]
+    text = ""
+    calls: list[ToolCall] = []
+    for i, part in enumerate(cand.content.parts):
+        fc = getattr(part, "function_call", None)
+        if fc is not None:
+            args = dict(fc.args) if getattr(fc, "args", None) else {}
+            calls.append(ToolCall(id=f"{fc.name}-{i}", name=fc.name, args=args))
+        elif getattr(part, "text", None):
+            text += part.text
+    u = getattr(resp, "usage_metadata", None)
+    return Step(
+        text=text,
+        tool_calls=calls,
+        input_tokens=getattr(u, "prompt_token_count", 0) if u else 0,
+        output_tokens=getattr(u, "candidates_token_count", 0) if u else 0,
+        stop_reason=str(getattr(cand, "finish_reason", "") or ""),
+    )
+
+
+class GeminiModel:
+    def __init__(self, name: str, model_id: str, temperature: float, max_tokens: int):
+        try:
+            from google import genai
+        except ImportError as e:  # pragma: no cover
+            raise SystemExit("pip install google-genai  (uv sync --extra providers)") from e
+        if not (os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")):
+            raise SystemExit("GEMINI_API_KEY (or GOOGLE_API_KEY) is not set")
+        self.name = name
+        self.model_id = model_id
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self._client = genai.Client()
+
+    def step(self, system: str, messages: list[dict], tools: list[dict]) -> Step:
+        from google.genai import types
+
+        config = types.GenerateContentConfig(
+            system_instruction=system,
+            tools=_gemini_tools(tools),
+            temperature=self.temperature,
+            max_output_tokens=self.max_tokens,
+        )
+        resp = self._client.models.generate_content(
+            model=self.model_id, contents=_gemini_contents(messages), config=config
+        )
+        return _step_from_gemini(resp)
+
+
 def build_model(
     name: str, spec: dict, *, temperature: float, max_tokens: int, mode: str = "single"
 ) -> Model:
@@ -259,8 +452,9 @@ def build_model(
                 name=name, default=spec.get("default", ""), replies=spec.get("replies")
             )
         return MockModel(name=name, default=spec.get("default", ""), replies=spec.get("replies"))
-    if provider == "anthropic":
-        return AnthropicModel(
+    cls = {"anthropic": AnthropicModel, "openai": OpenAIModel, "gemini": GeminiModel}.get(provider)
+    if cls is not None:
+        return cls(
             name=name,
             model_id=spec["model_id"],
             temperature=spec.get("temperature", temperature),
