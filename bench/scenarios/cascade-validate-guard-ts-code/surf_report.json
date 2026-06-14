@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "divergences": [
+    {
+      "hub": "hub.md",
+      "claim": "isValidName(name) returns true only for a NON-EMPTY name of at most 50 characters: it checks name.length > 0 && name.length <= 50. An empty string is rejected.",
+      "at": "code/validate/input.ts > isValidName",
+      "kind": "changed",
+      "old_hash": "2639314f09ca",
+      "new_hash": "7e51cb06d25f",
+      "new_code": "function isValidName(name: string): boolean {\n  return name.length <= 50;\n}",
+      "prose": "isValidName(name) returns true only for a NON-EMPTY name of at most 50 characters: it checks name.length > 0 && name.length <= 50. An empty string is rejected."
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+id = "cascade-serialize-key-order-ts-code"
+title = "Cascade: signer inherits a hidden canonicalizer's drifted key ordering (TypeScript)"
+lang = "typescript"
+task_type = "code"
+tier = "T2"  # the canonical key order is a load-bearing premise; the canonicalizer is hidden
+
+invariant = "A payload is signed over a canonical serialization; signer and verifier must order keys the same way."
+
+# The drift: canonicalString now sorts keys (Object.keys(fields).sort()) where it used to keep
+# insertion order. The serialized string — and therefore any signature over it — changes. The agent
+# edits signer.ts (visible) which must reproduce the canonical string, but canonical.ts is HIDDEN,
+# so the ordering rule comes only from its doc. Graded by `node --test` (Node >= 22.18 type-strip).
+drift = "canonicalString key order insertion -> sorted (Object.keys().sort()); signer reads order from the doc, not the hidden code"
+
+anchor = "code/sign/canonical.ts > canonicalString"
+edit_path = "code/signer.ts"  # the visible file the agent returns
+
+hidden_paths = ["code/sign/*.ts"]

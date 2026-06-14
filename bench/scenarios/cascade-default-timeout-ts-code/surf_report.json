@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "divergences": [
+    {
+      "hub": "hub.md",
+      "claim": "totalDeadlineMs(perAttemptMs) returns perAttemptMs * 3 (a request gets three attempts). The default per-attempt timeout is 30000 ms, so totalDeadlineMs() called with no argument returns 90000 ms \u2014 the default total request deadline.",
+      "at": "code/net/timeout.ts > totalDeadlineMs",
+      "kind": "changed",
+      "old_hash": "423c0258c20a",
+      "new_hash": "5277f05efc4c",
+      "new_code": "function totalDeadlineMs(perAttemptMs: number = 5000): number {\n  return perAttemptMs * 3;\n}",
+      "prose": "totalDeadlineMs(perAttemptMs) returns perAttemptMs * 3 (a request gets three attempts). The default per-attempt timeout is 30000 ms, so totalDeadlineMs() called with no argument returns 90000 ms \u2014 the default total request deadline."
+    }
+  ]
+}

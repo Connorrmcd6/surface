@@ -1,0 +1,12 @@
+# Code-edit grader for cascade-default-timeout-ts (Node's built-in test runner).
+#
+# The agent edits caller.ts::requestBudgetMs; timeout.ts (the drifted dependency) was hidden, so the
+# agent's default per-attempt timeout comes from its doc. Node strips TS types at load (>=22.18).
+#
+#   correct_cmd — call the real (hidden) totalDeadlineMs() and assert requestBudgetMs matches it
+#                 (15000 ms under the real 5000 ms default)                                     -> ok
+#   misled_cmd  — assert requestBudgetMs used the STALE 30000 ms default (90000 ms)              -> misled
+
+setup_files = ["tests"]
+correct_cmd = ["node", "--test", "tests/correct.test.ts"]
+misled_cmd = ["node", "--test", "tests/misled.test.ts"]

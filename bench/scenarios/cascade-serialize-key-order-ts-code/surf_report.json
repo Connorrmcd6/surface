@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "divergences": [
+    {
+      "hub": "hub.md",
+      "claim": "canonicalString(fields) serializes a flat string map to the string signatures are computed over. It emits the fields in INSERTION order \u2014 the order the keys appear on the object \u2014 as key=value pairs joined by '&'. So {b:'2', a:'1', c:'3'} serializes to \"b=2&a=1&c=3\".",
+      "at": "code/sign/canonical.ts > canonicalString",
+      "kind": "changed",
+      "old_hash": "b1f55401389c",
+      "new_hash": "c832bea1d85b",
+      "new_code": "function canonicalString(fields: Record<string, string>): string {\n  const keys = Object.keys(fields).sort();\n  return keys.map((k) => `${k}=${fields[k]}`).join('&');\n}",
+      "prose": "canonicalString(fields) serializes a flat string map to the string signatures are computed over. It emits the fields in INSERTION order \u2014 the order the keys appear on the object \u2014 as key=value pairs joined by '&'. So {b:'2', a:'1', c:'3'} serializes to \"b=2&a=1&c=3\"."
+    }
+  ]
+}

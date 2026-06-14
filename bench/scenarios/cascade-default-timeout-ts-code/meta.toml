@@ -1,0 +1,18 @@
+id = "cascade-default-timeout-ts-code"
+title = "Cascade: caller inherits a hidden net helper's drifted default timeout (TypeScript)"
+lang = "typescript"
+task_type = "code"
+tier = "T1"  # the default timeout lives in a dependency the agent cannot see — only its doc
+
+invariant = "Requests use a default per-attempt timeout; callers that don't override it must assume the same default."
+
+# The drift: totalDeadlineMs's default parameter `perAttemptMs` changed from 30000 to 5000, so the
+# total deadline it returns when called with no override fell from 90000ms to 15000ms. The agent
+# edits caller.ts (visible) which reports that default budget, but timeout.ts is HIDDEN, so the
+# default comes only from the doc. Graded by `node --test` (Node >= 22.18 type-strip).
+drift = "totalDeadlineMs default perAttemptMs 30000 -> 5000; caller reads the default from the doc, not the hidden code"
+
+anchor = "code/net/timeout.ts > totalDeadlineMs"
+edit_path = "code/caller.ts"  # the visible file the agent returns
+
+hidden_paths = ["code/net/*.ts"]

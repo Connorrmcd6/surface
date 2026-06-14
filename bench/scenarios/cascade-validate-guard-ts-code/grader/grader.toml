@@ -1,0 +1,12 @@
+# Code-edit grader for cascade-validate-guard-ts (Node's built-in test runner).
+#
+# The agent edits intake.ts::acceptedNames; input.ts (the drifted dependency) was hidden, so the
+# agent's validation rule comes from its doc. Node strips TS types at load (>=22.18).
+#
+#   correct_cmd — filter through the real (hidden) isValidName (now accepts empty names) and assert
+#                 acceptedNames matches it                                                       -> ok
+#   misled_cmd  — assert acceptedNames used the STALE rule (rejects empty names)                  -> misled
+
+setup_files = ["tests"]
+correct_cmd = ["node", "--test", "tests/correct.test.ts"]
+misled_cmd = ["node", "--test", "tests/misled.test.ts"]

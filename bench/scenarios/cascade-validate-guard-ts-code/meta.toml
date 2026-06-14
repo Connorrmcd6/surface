@@ -1,0 +1,18 @@
+id = "cascade-validate-guard-ts-code"
+title = "Cascade: intake inherits a hidden validator's dropped empty-name guard (TypeScript)"
+lang = "typescript"
+task_type = "code"
+tier = "T2"  # the empty-name rule is a load-bearing premise; the validator is hidden
+
+invariant = "Inputs are accepted iff the shared validator accepts them; callers must mirror its rule."
+
+# The drift: isValidName dropped its empty-string guard. It used to require `name.length > 0 &&
+# name.length <= 50`; it now only checks `name.length <= 50`, so an empty name is now ACCEPTED. The
+# agent edits intake.ts (visible) which filters names by that rule, but input.ts is HIDDEN, so the
+# rule comes only from the doc. Graded by `node --test` (Node >= 22.18 type-strip).
+drift = "isValidName dropped the `name.length > 0` guard (empty names now accepted); intake reads the rule from the doc, not the hidden code"
+
+anchor = "code/validate/input.ts > isValidName"
+edit_path = "code/intake.ts"  # the visible file the agent returns
+
+hidden_paths = ["code/validate/*.ts"]
