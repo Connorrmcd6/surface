@@ -2,11 +2,13 @@
 summary: Best-effort git queries for scoping and rename-following — advisory only, the gate never depends on them.
 anchors:
   - claim: >
-      changed_files returns the repo-relative paths changed between the merge base of base..HEAD
-      and the working tree, used to diff-scope the check. A missing merge base (shallow clone)
-      falls back to diffing the ref directly; if git can't answer at all it returns None.
+      changed_files returns the workspace-root-relative paths changed between the merge base of
+      base..HEAD and the working tree (via git diff --relative), used to diff-scope the check —
+      so the set intersects workspace-relative anchors even when the workspace is a repo
+      subdirectory. A missing merge base (shallow clone) falls back to diffing the ref directly;
+      if git can't answer at all it returns None.
     at: surf-cli/src/git.rs > changed_files
-    hash: 9f422d548239
+    hash: 454e65cc8aa3
   - claim: >
       show returns the contents of a file at a git ref (git show <base>:<path>), used to recover
       the previous source for advisory old_code/magnitude. None when unavailable — the verdict is

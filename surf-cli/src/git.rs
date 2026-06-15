@@ -8,8 +8,13 @@ use std::path::Path;
 use std::process::Command;
 
 /// Files changed between the merge base of `base`..HEAD and the working tree. Paths are
-/// repo-root-relative; they match `Anchor.file` (workspace-root-relative) when the workspace
-/// root is the repo root, the normal case. `None` if git can't answer.
+/// emitted relative to `root` (the workspace root) via `--relative`, so they match
+/// `Anchor.file` (also workspace-root-relative) even when the workspace is a *subdirectory*
+/// of the git repo — without `--relative`, `git diff` reports repo-root-relative paths
+/// (e.g. `proj/src/x.rs`) that never intersect a workspace-relative anchor (`src/x.rs`),
+/// silently scoping the `--base` gate to zero claims and passing real drift (exit 0).
+/// `--relative` also drops changes outside the workspace, which can never be anchored anyway.
+/// `None` if git can't answer.
 pub fn changed_files(root: &Path, base: &str) -> Option<HashSet<String>> {
     let merge_base = Command::new("git")
         .current_dir(root)
@@ -23,7 +28,7 @@ pub fn changed_files(root: &Path, base: &str) -> Option<HashSet<String>> {
 
     let output = Command::new("git")
         .current_dir(root)
-        .args(["diff", "--name-only", &merge_base])
+        .args(["diff", "--name-only", "--relative", &merge_base])
         .output()
         .ok()?;
     output.status.success().then(|| {

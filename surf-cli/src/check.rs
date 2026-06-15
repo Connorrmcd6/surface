@@ -734,6 +734,60 @@ mod tests {
     }
 
     #[test]
+    fn base_scope_works_when_workspace_is_a_repo_subdir() {
+        // The workspace (surf.toml) sits in `proj/`, a subdirectory of the git repo. A real
+        // logic drift in an anchored file must still fail `check --base`. Regression for the
+        // silent bypass where `git diff` emitted repo-root-relative paths (`proj/src/m.rs`)
+        // that never matched the workspace-relative anchor (`src/m.rs`), scoping the gate to
+        // zero claims and exiting clean.
+        let tmp = tempfile::tempdir().unwrap();
+        let repo = tmp.path();
+        let proj = repo.join("proj");
+
+        let v1 = "pub fn add(a: i64, b: i64) -> i64 { a + b }\n";
+        let h = stored_hash(v1, "src/m.rs > add");
+        write(&proj, "surf.toml", "");
+        write(&proj, "src/m.rs", v1);
+        write(
+            &proj,
+            "hubs/a.md",
+            &format!("---\nsummary: x\nanchors:\n  - claim: add sums\n    at: src/m.rs > add\n    hash: {h}\n---\n"),
+        );
+
+        // Initialize the repo at the parent, not the workspace.
+        git(repo, &["init", "-q"]);
+        git(
+            repo,
+            &["-c", "user.email=t@t", "-c", "user.name=t", "add", "."],
+        );
+        git(
+            repo,
+            &[
+                "-c",
+                "user.email=t@t",
+                "-c",
+                "user.name=t",
+                "commit",
+                "-q",
+                "-m",
+                "v1",
+            ],
+        );
+
+        // Diverge the anchored span in the working tree.
+        write(
+            &proj,
+            "src/m.rs",
+            "pub fn add(a: i64, b: i64) -> i64 { a - b }\n",
+        );
+
+        let ws = ws_at(proj.clone());
+        let scoped = check_workspace(&ws, Some("HEAD"), &[]).unwrap().0;
+        assert_eq!(scoped.len(), 1, "subdir --base must still catch the drift");
+        assert_eq!(scoped[0].kind, DivergenceKind::Changed);
+    }
+
+    #[test]
     fn no_flags_checks_everything() {
         let tmp = tempfile::tempdir().unwrap();
         let root = tmp.path();
