@@ -22,7 +22,7 @@ jobs:
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Install toolchain
         run: rustup target add ${{ matrix.target }}
       - name: Build
@@ -40,7 +40,7 @@ jobs:
           fi
           cat surf-${{ matrix.target }}.tar.gz.sha256
       - name: Upload to release
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
           files: |
             surf-${{ matrix.target }}.tar.gz
@@ -54,8 +54,8 @@ jobs:
       contents: read # download the release assets built by `build`
       id-token: write # npm publish --provenance attestation
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org"
@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch to surface-site
-        uses: peter-evans/repository-dispatch@v4
+        uses: peter-evans/repository-dispatch@28959ce8df70de7be546dd1250a005dd32156697 # v4
         with:
           token: ${{ secrets.SURFACE_SITE_SYNC_TOKEN }}
           repository: Connorrmcd6/surface-site
