@@ -91,8 +91,8 @@ fixed it.
 That's from a [pre-registered, deterministically-graded benchmark](https://github.com/Connorrmcd6/surface-bench)
 (3,250 graded completions, multi-turn agents, no LLM judge). It measures drift of exactly the kind
 `surf check` catches; the author of the benchmark also authors Surface, and a null result on any
-hypothesis was reportable — see the [write-up](https://github.com/Connorrmcd6/surface-bench) for the
-full method, limitations, and data.
+hypothesis was reportable — see the [write-up](https://github.com/Connorrmcd6/surface-bench/blob/main/PAPER.md)
+for the full method, limitations, and data.
 
 ## Quickstart
 
