@@ -1,7 +1,22 @@
+---
+summary: Operating instructions for AI agents; also dogfoods one sealed claim about the lint rule that governs this file.
+anchors:
+  - claim: >
+      surf lint blocks when AGENTS.md carries a surf:hubs block that does not link the configured
+      hubs directory, or when that directory does not exist; without the block it stays silent.
+    at: surf-cli/src/lint.rs > lint_agents_pointer
+    hash: 938380798f7a
+refs: []
+---
+
 # AGENTS.md
 
 Guidance for AI coding agents working in this repo. (Humans: see
 [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`docs/`](./docs/index.md).)
+
+> This file is itself a hub (see `surf.toml`): the one sealed claim below anchors to the lint rule
+> that polices this very file — a small bit of dogfooding. Everything else here is plain
+> instruction, deliberately not anchored.
 
 Surface is a deterministic gate that surfaces divergence between docs and code: you anchor a
 sentence to the code it describes, and `surf check` blocks when that code's logic changes out
@@ -24,8 +39,9 @@ codebase; reading all of them is wasteful context. They are split per module
 covering the area you're working on.
 <!-- /surf:hubs -->
 
-`surf lint` enforces that this block stays — pointing at the hubs directory, never duplicating
-or enumerating individual hubs.
+`surf lint` enforces that when this block is present it links the hubs directory and that the
+directory exists; by convention it points at the directory rather than duplicating or enumerating
+individual hubs (so agents search, not read everything).
 
 Caveat (the tool's own honest limit): a green gate means *the anchored code hasn't changed
 since last verified* — not that every sentence is true, and nothing about code no hub anchored.

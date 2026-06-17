@@ -1,1 +1,1 @@
-hubs = ["hubs/*.md"]
+hubs = ["hubs/*.md", "AGENTS.md"]
