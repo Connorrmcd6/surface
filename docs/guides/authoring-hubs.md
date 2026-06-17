@@ -143,4 +143,42 @@ When that block is present, `surf lint` checks it links the configured hubs dire
 the directory exists. It deliberately does **not** enumerate individual hubs — that would push an
 agent to read everything instead of the one hub it needs.
 
+## Claims in `AGENTS.md` / `CLAUDE.md`
+
+A hub isn't a special file *type* — it's any file the `hubs` glob matches that parses as a hub
+(frontmatter `anchors:` block + markdown body). So you *can* add `AGENTS.md` or `CLAUDE.md` to the
+glob and give it hub frontmatter, making one file double as both agent instructions and verified
+claims:
+
+```toml
+# surf.toml
+hubs = ["hubs/*.md", "AGENTS.md"]
+```
+
+```markdown
+---
+anchors:
+  - claim: the CLI exits non-zero when the gate finds a diverged claim
+    at: surf-cli/src/main.rs > main
+    hash:                       # written by `surf verify`
+---
+
+# Agent instructions
+
+...your normal AGENTS.md prose...
+```
+
+`surf verify` then hash-checks that claim like any other hub, and `surf for <path>` reports
+`AGENTS.md` as anchoring into it. Two things to know before you do this:
+
+- **The whole file must parse as a hub.** The `---` frontmatter has to be the top block and
+  unknown fields are rejected — you can't sprinkle a claim mid-document. Confirm whatever consumes
+  `AGENTS.md`/`CLAUDE.md` tolerates YAML frontmatter (most agent runners ignore it).
+- **It couples the file to code structure.** Renaming an anchored symbol will trip the gate on
+  `AGENTS.md` — that's the point of Surface, but it means an agent-docs file now participates in CI.
+
+This is a trade-off, not a recommendation. The default split above — declarative hubs, imperative
+`AGENTS.md` with a pointer block — keeps the two concerns separate; folding claims into
+`AGENTS.md` is there if you'd rather keep the instructions and the claims about them in one file.
+
 See also: [CI integration](./ci-integration.md) · [Examples](../examples.md).
