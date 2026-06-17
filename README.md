@@ -78,6 +78,22 @@ Quiet on cosmetics, loud on logic. Reformatting, comments, and consistent rename
 flipped operator, a relaxed comparison, or a dropped `await` does. The full mechanism is in
 [How the gate works](docs/reference/how-it-works.md).
 
+## Why it matters
+
+**Stale docs make AI agents fail. Surface finds them before they do.**
+
+AI coding agents trust your docs. So when a doc is out of date, the agent confidently does the wrong
+thing — even when the real code is right there. We measured it: across multiple models from three
+providers, agents working from a stale doc got the task wrong far more often than agents given no doc
+at all, and a more capable model was no more resistant. Accurate docs — or just surfacing the drift —
+fixed it.
+
+That's from a [pre-registered, deterministically-graded benchmark](https://github.com/Connorrmcd6/surface-bench)
+(3,250 graded completions, multi-turn agents, no LLM judge). It measures drift of exactly the kind
+`surf check` catches; the author of the benchmark also authors Surface, and a null result on any
+hypothesis was reportable — see the [write-up](https://github.com/Connorrmcd6/surface-bench) for the
+full method, limitations, and data.
+
 ## Quickstart
 
 ```sh
