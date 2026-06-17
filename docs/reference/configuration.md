@@ -13,6 +13,21 @@ hubs = ["hubs/*.md"]
 Point the glob wherever your hubs live: keep them central (`hubs/*.md`) or co-locate them with code
 (e.g. `["**/_hub.md"]`).
 
+`hubs` is a list, so you can combine locations — the matches are unioned, then sorted and
+de-duplicated, so overlapping globs are safe:
+
+```toml
+hubs = ["hubs/*.md", "docs/hubs/*.md", "**/_hub.md"]
+```
+
+Any file a glob matches is treated as a hub if it parses as one (frontmatter `anchors:` block +
+markdown body), so the list can also pull in files that aren't named like hubs — for example
+`AGENTS.md` (see [Claims in AGENTS.md / CLAUDE.md](../guides/authoring-hubs.md#claims-in-agentsmd--claudemd)).
+
+> **`surf new` uses only the first glob.** When scaffolding a hub it writes into the directory
+> derived from the first pattern (e.g. `docs/hubs/*.md` → `docs/hubs/`); the other patterns are
+> still linted and verified normally, they're just not where `new` writes.
+
 ## Languages
 
 TypeScript (`.ts`, `.tsx`, `.mts`, `.cts`), JavaScript/JSX (`.js`, `.jsx`, `.mjs`, `.cjs`), Rust

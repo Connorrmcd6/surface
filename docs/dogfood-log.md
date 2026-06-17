@@ -6,6 +6,43 @@ did about it, the lesson.* Keep it honest; the failures are the interesting part
 
 ---
 
+## 2026-06-17 — Making AGENTS.md a hub caught AGENTS.md lying about itself
+
+**Context:** We documented that `AGENTS.md`/`CLAUDE.md` *can* double as a hub (any file the `hubs`
+glob matches that parses as a hub counts), then went to actually wire it up here: added `AGENTS.md`
+to the glob and sealed one claim anchored to `lint_agents_pointer` — the lint rule that polices
+`AGENTS.md` itself.
+
+**What happened:** the claim couldn't be written as the existing prose. `AGENTS.md` said:
+
+> `surf lint` enforces that this block stays — pointing at the hubs directory, never duplicating
+> or enumerating individual hubs.
+
+But `lint_agents_pointer` only checks that the `surf:hubs` block *links the hubs directory and that
+the directory exists* — it does **not** enforce non-enumeration (that's design convention, not code).
+The prose had quietly overstated the tool. The discipline of writing a claim that must match a
+specific symbol's actual behavior forced the correction: split the sentence into what lint enforces
+(link + existence) vs. what's by convention.
+
+```
+surf verify "surf-cli/src/lint.rs > lint_agents_pointer"  → updated AGENTS.md
+surf check                                                 → all anchored spans match
+```
+
+**Why it's a good story:** the self-referential loop closed — `AGENTS.md` now carries a sealed
+claim about the rule that governs `AGENTS.md`. And the mere act of making a sentence *sealable*
+surfaced that the un-anchored version had drifted from the code. The claim didn't catch drift over
+time; it caught an overstatement that already existed, because anchoring forces you to say exactly
+what the symbol does.
+
+**Lesson / open question:** "write it so it can be anchored" is itself a forcing function for
+honest prose, separate from the gate ever going red. Open question: how much of an imperative
+instructions file is genuinely anchorable? Here it was exactly one sentence — the rest is process,
+deliberately left unanchored. Coverage is still the product (cf. the 2026-06-12 entry); over-anchoring
+`AGENTS.md` would just invite rubber-stamping.
+
+---
+
 ## 2026-06-12 — Instructions are advisory; the gate isn't (agent edition)
 
 **Context:** Asked Claude to knock out the 0.6.1 quick wins (`#71`, `#67`). It changed `surf for`'s
