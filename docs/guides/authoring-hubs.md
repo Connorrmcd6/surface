@@ -29,6 +29,10 @@ Prose a human (or agent) reads to understand this domain.
 - **`at`** — the anchor: where the claim's logic lives (grammar below).
 - **`hash`** — the seal. Absent until you `surf verify`; the gate treats a hashless claim as
   *unverified*.
+- **`refs` / `covers`** — forward-declared and currently inert. `refs` (hub composition) is parsed
+  but unused; `covers` (advisory file-scope globs) is parsed and lint-validated but never affects
+  `surf check`. Leave them empty unless you have a reason — the features that consume them aren't
+  shipped.
 
 Where hubs live is configured by the `hubs` glob in `surf.toml` (default `hubs/*.md`); keep them
 central or co-locate them with code (`["**/_hub.md"]`).
