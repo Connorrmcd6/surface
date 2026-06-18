@@ -191,4 +191,21 @@ anchors:
 - **It couples the file to code structure.** Renaming an anchored symbol trips the gate on
   `AGENTS.md` — that's the point of Surface, but it means an agent-docs file now participates in CI.
 
+### When *not* to anchor a file
+
+"Any file can be a hub" doesn't mean every file should be. Pitch and marketing prose — a
+`README.md` especially — is a poor fit:
+
+- **The claims are coarse.** A README describes behavior in broad strokes that span many symbols,
+  so an anchor either covers a near-whole-file span or trips on incidental edits — the
+  over-anchoring trap from [Choosing granularity](#choosing-granularity).
+- **It usually duplicates hub prose.** The invariants a README restates should already be claimed
+  in the hubs anchored to the real code; anchoring the README just gives you a second copy to keep
+  honest.
+- **On GitHub, frontmatter renders as a table.** GitHub displays a Markdown file's YAML frontmatter
+  as a metadata table at the top of the rendered page, so an `anchors:` block would sit above your
+  pitch on the repo's front page.
+
+Anchor the code, and let the README link to the docs instead.
+
 See also: [CI integration](./ci-integration.md) · [Examples](../examples.md).
