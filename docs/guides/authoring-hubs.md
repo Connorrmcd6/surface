@@ -127,11 +127,21 @@ surf verify --follow            # renamed symbol OR moved file: re-point the anc
 Verifying without reading is the failure mode the whole tool exists to prevent. A green gate
 promises only "nothing anchored changed since last sign-off" — never that the prose is true.
 
-## Hubs and `AGENTS.md`
+## Where claims can live
 
-Hubs are *declarative* domain briefings; `AGENTS.md` is *imperative* operating instructions for
-coding agents. Keep them separate — don't copy hub prose into `AGENTS.md`. Instead, give
-`AGENTS.md` a pointer block that sends agents to the hubs directory to search for what they need:
+A hub isn't a special file *type* — it's **any file the `hubs` glob matches that parses as a hub**
+(a `---`-fenced `anchors:` frontmatter block + a markdown body). Claims don't have to live under
+`hubs/`: add any file to the glob in `surf.toml`, give it the frontmatter, and `surf` treats it
+like any other hub. The same is true for `AGENTS.md` or `CLAUDE.md`.
+
+The common question is `AGENTS.md` — the *imperative* operating instructions for coding agents,
+versus hubs, which are *declarative* domain briefings. There are two approaches, and **a central
+`hubs/` directory is the recommended default.**
+
+### Recommended — keep hubs and `AGENTS.md` separate
+
+Keep the two concerns apart: don't copy hub prose into `AGENTS.md`. Instead, give `AGENTS.md` a
+pointer block that sends agents to the hubs directory to search for what they need:
 
 ```markdown
 <!-- surf:hubs -->
@@ -139,16 +149,17 @@ Context lives in [`hubs/`](./hubs/) — read only the hub(s) you need.
 <!-- /surf:hubs -->
 ```
 
-When that block is present, `surf lint` checks it links the configured hubs directory and that
-the directory exists. It deliberately does **not** enumerate individual hubs — that would push an
-agent to read everything instead of the one hub it needs.
+When that block is present, `surf lint` checks it links the configured hubs directory and that the
+directory exists. It deliberately does **not** enumerate individual hubs — that would push an agent
+to read everything instead of the one hub it needs.
 
-## Claims in `AGENTS.md` / `CLAUDE.md`
+This keeps `AGENTS.md` lean, stops the declarative and imperative content from drifting into each
+other, and keeps verification metadata out of the file agents read as instructions.
 
-A hub isn't a special file *type* — it's any file the `hubs` glob matches that parses as a hub
-(frontmatter `anchors:` block + markdown body). So you *can* add `AGENTS.md` or `CLAUDE.md` to the
-glob and give it hub frontmatter, making one file double as both agent instructions and verified
-claims:
+### Alternative — fold claims into `AGENTS.md` / `CLAUDE.md`
+
+If you'd rather keep the instructions and the verified claims about them in one file, add it to the
+glob and give it hub frontmatter:
 
 ```toml
 # surf.toml
@@ -169,16 +180,15 @@ anchors:
 ```
 
 `surf verify` then hash-checks that claim like any other hub, and `surf for <path>` reports
-`AGENTS.md` as anchoring into it. Two things to know before you do this:
+`AGENTS.md` as anchoring into it. Three things to weigh:
 
-- **The whole file must parse as a hub.** The `---` frontmatter has to be the top block and
-  unknown fields are rejected — you can't sprinkle a claim mid-document. Confirm whatever consumes
-  `AGENTS.md`/`CLAUDE.md` tolerates YAML frontmatter (most agent runners ignore it).
-- **It couples the file to code structure.** Renaming an anchored symbol will trip the gate on
+- **The whole file must parse as a hub.** The `---` frontmatter has to be the top block and unknown
+  fields are rejected — you can't sprinkle a claim mid-document.
+- **The frontmatter is part of what the agent reads.** Most agent runners load `AGENTS.md` /
+  `CLAUDE.md` as raw text and don't strip YAML frontmatter, so the `anchors:` block lands in the
+  agent's context as a little extra noise. It's small and structured, but if you want `AGENTS.md`
+  to stay purely instructions, prefer the recommended approach above.
+- **It couples the file to code structure.** Renaming an anchored symbol trips the gate on
   `AGENTS.md` — that's the point of Surface, but it means an agent-docs file now participates in CI.
-
-This is a trade-off, not a recommendation. The default split above — declarative hubs, imperative
-`AGENTS.md` with a pointer block — keeps the two concerns separate; folding claims into
-`AGENTS.md` is there if you'd rather keep the instructions and the claims about them in one file.
 
 See also: [CI integration](./ci-integration.md) · [Examples](../examples.md).
