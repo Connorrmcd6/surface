@@ -21,8 +21,10 @@ hubs = ["hubs/*.md", "docs/hubs/*.md", "**/_hub.md"]
 ```
 
 Any file a glob matches is treated as a hub if it parses as one (frontmatter `anchors:` block +
-markdown body), so the list can also pull in files that aren't named like hubs — for example
-`AGENTS.md` (see [Claims in AGENTS.md / CLAUDE.md](../guides/authoring-hubs.md#claims-in-agentsmd--claudemd)).
+markdown body), so claims can live in *any* file — not just files under `hubs/`. The list can pull
+in files that aren't named like hubs, e.g. `AGENTS.md` or `CLAUDE.md` (see
+[Where claims can live](../guides/authoring-hubs.md#where-claims-can-live) for the recommended
+layout and the trade-offs).
 
 > **`surf new` uses only the first glob.** When scaffolding a hub it writes into the directory
 > derived from the first pattern (e.g. `docs/hubs/*.md` → `docs/hubs/`); the other patterns are
