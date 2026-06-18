@@ -145,6 +145,8 @@ fn lint_workspace(ws: &Workspace) -> Result<Vec<Finding>> {
             }
         }
 
+        lint_covers(&rel, &hub, &mut findings);
+
         if hub.frontmatter.anchors.len() > MAX_ANCHORS_PER_HUB {
             findings.push(Finding {
                 severity: Severity::Warn,
@@ -215,6 +217,59 @@ fn lint_agents_pointer(ws: &Workspace, findings: &mut Vec<Finding>) {
                 "`surf:hubs` block must link the hubs directory `{want}/` and it must exist — agents read it to find context"
             ),
         });
+    }
+}
+
+/// Validate a hub's advisory `covers` globs (§9.1). The verdict never reads `covers`, so this
+/// is the only place a malformed glob can be caught — a bad pattern blocks (silently dropping it
+/// would let a typo'd scope go unnoticed, the same reasoning as `--files` in `check`, #38). When
+/// the globs are well-formed, warn for any of the hub's own anchored files that none of them
+/// match: a hub whose `covers` excludes its own anchors is almost certainly a fat-fingered glob.
+fn lint_covers(rel: &str, hub: &surf_core::Hub, findings: &mut Vec<Finding>) {
+    if hub.frontmatter.covers.is_empty() {
+        return;
+    }
+
+    let mut patterns = Vec::new();
+    for raw in &hub.frontmatter.covers {
+        match glob::Pattern::new(raw) {
+            Ok(p) => patterns.push(p),
+            Err(e) => findings.push(Finding {
+                severity: Severity::Block,
+                hub: rel.to_string(),
+                claim: String::new(),
+                at: raw.clone(),
+                message: format!("invalid `covers` glob \"{raw}\": {e}"),
+            }),
+        }
+    }
+    if patterns.len() != hub.frontmatter.covers.len() {
+        return; // a glob didn't compile — don't run the coverage nudge on a partial pattern set
+    }
+
+    // The hub's own anchored files (deduped, sorted for deterministic output).
+    let mut anchored: Vec<String> = hub
+        .frontmatter
+        .anchors
+        .iter()
+        .flat_map(|c| c.at.sites())
+        .filter_map(|s| parse_anchor(s).ok().map(|a| a.file))
+        .collect();
+    anchored.sort();
+    anchored.dedup();
+
+    for file in anchored {
+        if !patterns.iter().any(|p| p.matches(&file)) {
+            findings.push(Finding {
+                severity: Severity::Warn,
+                hub: rel.to_string(),
+                claim: String::new(),
+                at: file.clone(),
+                message: format!(
+                    "anchored file `{file}` is not matched by any `covers` glob — check the globs cover this hub's own anchors"
+                ),
+            });
+        }
     }
 }
 
@@ -642,6 +697,55 @@ mod tests {
                 .any(|x| x.severity == Severity::Warn && x.message.contains("anchors in one hub")),
             "expected a too-many-anchors warning, got {f:?}"
         );
+    }
+
+    #[test]
+    fn covers_valid_globs_are_silent() {
+        let (_t, ws) = ws_with(&[
+            ("src/auth.rs", "pub fn greet() {}\n"),
+            (
+                "hubs/a.md",
+                "---\nsummary: x\ncovers:\n  - src/**\nanchors:\n  - claim: greeting\n    at: src/auth.rs > greet\n---\n",
+            ),
+        ]);
+        assert!(lint_workspace(&ws).unwrap().is_empty());
+    }
+
+    #[test]
+    fn covers_malformed_glob_blocks() {
+        let (_t, ws) = ws_with(&[
+            ("src/auth.rs", "pub fn greet() {}\n"),
+            (
+                "hubs/a.md",
+                "---\nsummary: x\ncovers:\n  - 'src/[unterminated'\nanchors:\n  - claim: greeting\n    at: src/auth.rs > greet\n---\n",
+            ),
+        ]);
+        let f = lint_workspace(&ws).unwrap();
+        let block = f
+            .iter()
+            .find(|x| x.message.contains("invalid `covers` glob"))
+            .expect("expected a covers glob error");
+        assert_eq!(block.severity, Severity::Block);
+    }
+
+    #[test]
+    fn covers_not_matching_own_anchor_warns() {
+        // `covers` scopes only `lib/**`, but the hub anchors a file under `src/` — the fat-finger
+        // the nudge exists to catch.
+        let (_t, ws) = ws_with(&[
+            ("src/auth.rs", "pub fn greet() {}\n"),
+            (
+                "hubs/a.md",
+                "---\nsummary: x\ncovers:\n  - lib/**\nanchors:\n  - claim: greeting\n    at: src/auth.rs > greet\n---\n",
+            ),
+        ]);
+        let f = lint_workspace(&ws).unwrap();
+        let warn = f
+            .iter()
+            .find(|x| x.message.contains("not matched by any `covers` glob"))
+            .expect("expected an unmatched-anchor warning");
+        assert_eq!(warn.severity, Severity::Warn);
+        assert_eq!(warn.at, "src/auth.rs");
     }
 
     fn agents_findings(ws: &Workspace) -> Vec<Finding> {
