@@ -1,0 +1,27 @@
+name: Audit
+
+# Advisory scan of the dependency tree (RustSec). Pairs with dependabot.yml, which proposes the
+# bumps; this fails the PR if a known advisory is present. Gated on dependency-file changes so a
+# docs-only or code-only PR doesn't pay for it, plus a weekly cron — advisories are disclosed
+# independently of our commits, so a CVE on an unchanged, pinned dep is still caught.
+on:
+  push:
+    branches: [main]
+    paths: ["**/Cargo.toml", "Cargo.lock"]
+  pull_request:
+    paths: ["**/Cargo.toml", "Cargo.lock"]
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
