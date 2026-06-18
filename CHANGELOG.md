@@ -7,7 +7,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-06-18
+
 ### Added
+- Hubs may now declare advisory `covers` globs (repo-root-relative, same dialect as
+  `config.hubs`). The field is accepted, stored, and lint-validated — a malformed glob blocks,
+  and a hub whose globs don't match its own anchored files warns — but **the verdict never reads
+  it**: `surf check` is byte-for-byte identical whether or not a hub declares `covers`. The
+  louder coverage pass that consumes these globs stays deferred (#94, part of #5).
 - TypeScript `suggest` now enumerates exported class methods (`Class > method`) by default —
   matching Go (#29) and Python — so a class-heavy file no longer reports "no unanchored public
   symbols found." `suggest --all` additionally proposes the exported class itself and
@@ -265,7 +272,8 @@ Initial release — the MVP gate that surfaces docs↔code divergence.
 - Language support: TypeScript/TSX, JavaScript/JSX, Rust, Python, and Go.
 - Distribution: GitHub Action, pre-commit hook, and `install.sh`; Apache-2.0 license.
 
-[Unreleased]: https://github.com/Connorrmcd6/surface/compare/v0.6.2...HEAD
+[Unreleased]: https://github.com/Connorrmcd6/surface/compare/v0.6.3...HEAD
+[0.6.3]: https://github.com/Connorrmcd6/surface/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/Connorrmcd6/surface/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/Connorrmcd6/surface/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/Connorrmcd6/surface/compare/v0.5.0...v0.6.0
