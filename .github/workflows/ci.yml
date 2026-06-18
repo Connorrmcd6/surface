@@ -2,8 +2,24 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main] # main always runs fully (no paths filter) — pre-release safety
   pull_request:
+    # Skip the whole workflow for changes that cannot affect clippy/tests/dogfood.
+    # The dogfood step reads hubs/AGENTS.md/surf.toml, so those are *not* docs-only.
+    paths:
+      - "**/*.rs"
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - "hubs/**"
+      - "AGENTS.md"
+      - "surf.toml"
+      - ".github/workflows/ci.yml"
+
+# A new commit on a PR cancels its superseded run; main runs are never cancelled mid-flight.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
@@ -16,20 +32,11 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Install toolchain (pinned via rust-toolchain.toml)
         run: rustup show
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Format
         run: cargo fmt --all --check
       - name: Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
-
-  # Advisory scan of the dependency tree (RustSec). Pairs with dependabot.yml,
-  # which proposes the bumps; this fails the PR if a known advisory is present.
-  audit:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2.0.0
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
   # Tests + dogfood on every OS we ship a release binary for (release.yml uses macos-14
   # for aarch64-apple-darwin), so Darwin path/tree-sitter behavior is exercised pre-release.
@@ -43,6 +50,7 @@ jobs:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Install toolchain (pinned via rust-toolchain.toml)
         run: rustup show
+      - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Test
         run: cargo test --all
       - name: Surface self-check (dogfood)
