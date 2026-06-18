@@ -178,7 +178,7 @@ Then **stop**. No `refs` resolver, no catalog, no MCP service, **no reviewer plu
 
 **A note on the CI step that everyone gets wrong:** the gate hashes the working-tree span and compares to the hash committed in frontmatter. It needs the checkout, *not* full git history — do **not** `fetch-depth: 0`. The only thing the base ref buys you is scoping (re-check only anchors whose files changed in the PR), and a shallow fetch of the merge base covers that.
 
-**`covers` is deliberately absent from the MVP schema.** It is consumed only by the reviewer plugin (§7), which the MVP excludes — so asking authors to write it now would be maintaining a field that does nothing, the exact ceremony §4 warns against. Forward-declared, not shipped.
+**`covers` is authorable but inert.** The field is accepted, stored, and lint-validated (a malformed glob blocks), but **the verdict never reads it** — `surf check` is byte-for-byte identical whether or not a hub declares `covers`. The louder coverage pass that consumes these globs is consumed only by the reviewer plugin (§7), which the MVP excludes, and stays deferred until its false-negative rate is measured. So a hub may declare its scope today; nothing acts on it yet.
 
 ### 9.2 The MVP has a falsifiable success criterion
 

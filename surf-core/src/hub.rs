@@ -19,6 +19,12 @@ pub struct Frontmatter {
     /// Hub composition. Forward-declared per §9.3 — parsed but inert in the MVP.
     #[serde(default)]
     pub refs: Vec<String>,
+    /// Advisory coverage scope: repo-root-relative globs (same dialect as `config.hubs`)
+    /// naming the files this hub claims a relationship with. Forward-declared per §9.1 —
+    /// parsed, stored, and lint-validated, but **the verdict never reads it** (§5/§8). The
+    /// louder coverage pass that consumes these globs is deferred to #5.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub covers: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -288,11 +294,36 @@ mod tests {
     }
 
     #[test]
-    fn covers_field_is_rejected() {
-        // `covers` is deliberately absent from the MVP schema (§9.1); deny_unknown_fields
-        // surfaces it as a clear error rather than silently ignoring a field that does nothing.
-        let err = parse_hub("---\nsummary: x\ncovers:\n  - src/**\n---\nbody\n").unwrap_err();
-        assert!(matches!(err, HubError::Yaml(_)));
+    fn covers_field_is_accepted() {
+        // `covers` is forward-declared per §9.1: parsed and stored, but inert in the verdict
+        // (the louder coverage pass that consumes it is deferred to #5).
+        let hub =
+            parse_hub("---\nsummary: x\ncovers:\n  - src/**\n  - lib/foo.rs\n---\nbody\n").unwrap();
+        assert_eq!(
+            hub.frontmatter.covers,
+            vec!["src/**".to_string(), "lib/foo.rs".to_string()]
+        );
+    }
+
+    #[test]
+    fn covers_defaults_to_empty() {
+        // A hub that omits `covers` parses with an empty list, and serializing it back does not
+        // introduce an empty `covers:` key — existing hubs are byte-unaffected.
+        let hub = parse_hub("---\nsummary: x\n---\nbody\n").unwrap();
+        assert!(hub.frontmatter.covers.is_empty());
+        let yaml = serde_yaml::to_string(&hub.frontmatter).unwrap();
+        assert!(
+            !yaml.contains("covers"),
+            "empty covers should not serialize: {yaml}"
+        );
+    }
+
+    #[test]
+    fn covers_round_trips() {
+        let hub = parse_hub("---\nsummary: x\ncovers:\n  - src/**\n---\nbody\n").unwrap();
+        let yaml = serde_yaml::to_string(&hub.frontmatter).unwrap();
+        let reparsed: Frontmatter = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(hub.frontmatter, reparsed);
     }
 
     #[test]
