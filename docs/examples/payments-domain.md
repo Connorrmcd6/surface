@@ -137,10 +137,14 @@ aren't all the same shape. Each claim above is doing a different job:
   can't anchor a "narrower symbol" — the whole mapping *is* the invariant — and the messages get
   reworded constantly. `ignore_literals: true` drops string-literal *content* from the hash, so a
   copy tweak stays quiet while adding or removing a branch (a structural change) still fires. The
-  honest limit: because the `case` labels are themselves string literals, *re-pointing* an existing
-  branch to a different code slips through — this guards the mapping's **shape**, not its exact
-  routing. Reach for it only when the span genuinely must stay coarse; prefer a narrower anchor
-  first.
+  honest limit: the `case` *labels* are themselves string literals, so re-pointing a branch to a
+  different processor *code* still slips through. But re-pointing its **target** does not when the
+  target is a member access — `return DeclineCategory.INSUFFICIENT` — because the
+  [v2 hash recipe](../reference/hash-recipes.md) keeps member-access names verbatim even while
+  literal content is dropped, so swapping it for `DeclineCategory.FRAUD` trips the gate (#140). Net:
+  this guards the mapping's **shape** and its member-access routing, but not the exact literal code
+  each label matches. Reach for it only when the span genuinely must stay coarse; prefer a narrower
+  anchor first.
 
 - **Webhook auth — an ordering invariant.** "Verify before any state change" is about *sequence*.
   Anchor the dispatcher that owns the ordering; move a write above the signature check and the span
