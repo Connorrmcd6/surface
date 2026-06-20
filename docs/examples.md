@@ -9,6 +9,10 @@ holds: **quiet on cosmetics (formatting, comments, consistent renames), loud on 
 
 The anchor grammar and the verify loop are covered in [Authoring hubs](./guides/authoring-hubs.md).
 
+For the other scale — documenting a whole service rather than a single symbol — see
+[A payments domain hub](./examples/payments-domain.md): a full domain briefing plus the
+load-bearing invariants (including a multi-site state-machine claim) that keep it honest.
+
 ## TypeScript
 
 ```yaml

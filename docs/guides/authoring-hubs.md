@@ -85,6 +85,43 @@ Run `surf lint` to confirm every anchor resolves to exactly one symbol. Ambiguou
 anchors **block**; a symbol that was merely renamed — or a file that git reports has moved — only
 **warns** and points you at `surf verify --follow`.
 
+## Multi-site claims: guard a cross-file invariant
+
+The most powerful claim is one a comment can't express: an `at:` **list** asserting that several
+spans stay in lockstep. The hash is the combination of every site's hash, so the claim is stale
+the moment *any one* of them changes. Use it to encode "these must change together" — the class of
+bug where someone edits one place and forgets the others.
+
+For example, `surf-core/src/lang.rs` enumerates the `Lang` variants in three separate `match`
+arms — `from_path` (extension → variant), `tree_sitter_language` (variant → grammar), and `family`
+(variant → `Family`). Adding a language means touching all three; touching only one is a latent
+bug. One claim guards the whole contract:
+
+```yaml
+- claim: >
+    the set of Lang variants is enumerated identically across from_path, tree_sitter_language,
+    and family — adding or removing a language must touch all three in lockstep
+  at:
+    - surf-core/src/lang.rs > Lang > from_path
+    - surf-core/src/lang.rs > Lang > tree_sitter_language
+    - surf-core/src/lang.rs > Lang > family
+  hash: c93ef85daf46       # one combined hash for all three spans, written by `surf verify`
+```
+
+Now edit *only* `from_path` and `surf check` fails the claim even though the other two were
+untouched — the combined hash flips:
+
+```
+DIVERGED  hubs/lang.md :: …> from_path  +  …> tree_sitter_language  +  …> family
+    stored c93ef85daf46 → now f84129c768cf
+```
+
+The win is that it catches the **omission**, not just the edit: changing `from_path` and
+forgetting `family` is exactly what slips past three separate single-site claims. The trade-off is
+the flip side of [granularity](#choosing-granularity) — a multi-site claim trips on *any* listed
+span changing, so reserve it for genuinely coupled, stable spans. For an evolving set of spans it
+turns noisy; there, prefer separate single-site claims.
+
 ## Choosing granularity
 
 This is the central tension (proposal §8):
