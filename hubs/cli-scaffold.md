@@ -5,12 +5,12 @@ anchors:
       init writes surf.toml + creates hubs/ in the cwd, and is idempotent — an existing
       surf.toml is left untouched.
     at: surf-cli/src/init.rs > run
-    hash: cfd3bdbdd15d
+    hash: 2:dd57e4e7c5d9
   - claim: >
       new derives the target directory from the literal prefix of the first hub glob, then
       writes a hub with no anchors so it is lint-clean immediately; it refuses to overwrite.
     at: surf-cli/src/new.rs > hub_dir
-    hash: 598296b19fb6
+    hash: 2:d921913bf7bf
 refs: []
 ---
 

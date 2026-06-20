@@ -7,6 +7,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Hash recipe v2 (member-access names verbatim).** The canonical hash now keeps the
+  property/field component of a member-access expression verbatim instead of alpha-renaming it,
+  so re-pointing an anchored span at a *different* external symbol — `PointsTier.TIER_1` →
+  `TIER_2`, `b.Del` → `b.Keep`, `ProbeColor.RED` → `GREEN` — changes the hash even when the name
+  occurs once. Previously these passed the gate silently while the claim's prose became false
+  (#140, the member-access slice of #77). Consistent local/parameter renames stay quiet, as
+  before. Covers TypeScript, Go, Rust, and Python.
+- **Versioned stamps.** Stored hashes now carry their recipe: a v2 stamp is prefixed `2:`, a bare
+  12-hex stamp is an implicit v1. `surf check` verifies each stamp under its own recipe, so
+  existing v1 stamps keep passing (with a one-line nudge) until `surf verify` re-stamps them as
+  v2 — one pass per repo. An unrecognized stamp prefix fails closed. See
+  [Hash recipes](docs/reference/hash-recipes.md). **Action on upgrade: run `surf verify` once.**
+
 ## [0.6.3] - 2026-06-18
 
 ### Added

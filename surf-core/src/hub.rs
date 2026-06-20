@@ -364,6 +364,21 @@ mod tests {
     }
 
     #[test]
+    fn versioned_stamp_round_trips_as_a_string() {
+        // A `2:`-prefixed v2 stamp is a plain YAML scalar (colon not followed by a space), so it
+        // parses back as the exact string and survives a serialize round-trip (#140).
+        let out = set_anchor_hash(HUB, 0, "2:abc123def456").unwrap();
+        let hub = parse_hub(&out).unwrap();
+        assert_eq!(
+            hub.frontmatter.anchors[0].hash.as_deref(),
+            Some("2:abc123def456")
+        );
+        let yaml = serde_yaml::to_string(&hub.frontmatter).unwrap();
+        let reparsed: Frontmatter = serde_yaml::from_str(&yaml).unwrap();
+        assert_eq!(reparsed.anchors[0].hash.as_deref(), Some("2:abc123def456"));
+    }
+
+    #[test]
     fn follow_rewrites_scalar_at() {
         let out = set_anchor_at(HUB, 0, "a.rs > foo_renamed").unwrap();
         let reparsed = parse_hub(&out).unwrap();

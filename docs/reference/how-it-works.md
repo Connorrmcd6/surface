@@ -15,11 +15,16 @@ The gate runs in four steps.
    placeholders (a *consistent* rename yields the same tokens, swapping two names does not);
    operators, keywords, and literal *values* are kept verbatim. Python decorators are part of the
    span, and a decorator's *name* is kept verbatim — so swapping `@cache` for `@lru_cache`, or
-   `@staticmethod` for `@classmethod`, changes the hash.
+   `@staticmethod` for `@classmethod`, changes the hash. **Member-access names are kept verbatim
+   too** (`obj.foo`, `pkg.Bar`, `Enum.VARIANT`), so re-pointing a span at a *different* external
+   symbol — `PointsTier.TIER_1` → `TIER_2`, `b.Del` → `b.Keep` — changes the hash even when the
+   name occurs once. (This last rule is the **v2** recipe; see [Hash recipes](./hash-recipes.md).)
 3. **Hash.** SHA-256 of that stream, truncated to 12 hex. A list `at:` combines its sites into one
    hash, so the claim is stale if *any* listed span changes.
-4. **Compare** against the hash stored in the frontmatter (written by `surf verify`). Equal → pass;
-   different → block.
+4. **Compare** against the stamp stored in the frontmatter (written by `surf verify`). The stamp
+   carries its recipe — a v2 stamp is prefixed `2:`, a bare hex stamp is an older v1 — and is
+   verified under *its own* recipe, so existing v1 stamps keep passing until `surf verify` upgrades
+   them. Equal → pass; different → block.
 
 Quiet on cosmetics, loud on logic — and **reproducible**, because the parser ships *inside* the
 binary and is version-pinned. There is no separate formatter or language server in CI to skew the

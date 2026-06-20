@@ -9,13 +9,13 @@ anchors:
       versioned {version, path, matches} envelope (JSON), always exiting 0 whether or not anything
       matched.
     at: surf-cli/src/for_path.rs > run
-    hash: 3143f824dcfb
+    hash: 2:4ef15aadc147
   - claim: >
       find collects every claim whose anchored file equals the queried path (matched on path only —
       no source parse), optionally narrowed to anchors whose first segment is the given symbol.
       Malformed hubs are skipped rather than erroring, and results are sorted by hub then anchor.
     at: surf-cli/src/for_path.rs > find
-    hash: 047c1480c650
+    hash: 2:6eb52572ab68
 refs: []
 ---
 

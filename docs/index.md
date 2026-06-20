@@ -117,4 +117,4 @@ Agents are a multiplier, not the foundation.
 
 - [Install](./getting-started/install.md) · [Quickstart](./getting-started/quickstart.md)
 - [Authoring hubs](./guides/authoring-hubs.md) · [CI integration](./guides/ci-integration.md) · [Examples](./examples.md)
-- Reference: [Commands](./reference/commands.md) · [Configuration](./reference/configuration.md) · [How the gate works](./reference/how-it-works.md) · [FAQ](./reference/faq.md)
+- Reference: [Commands](./reference/commands.md) · [Configuration](./reference/configuration.md) · [How the gate works](./reference/how-it-works.md) · [Hash recipes](./reference/hash-recipes.md) · [FAQ](./reference/faq.md)

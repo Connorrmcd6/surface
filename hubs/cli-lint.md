@@ -7,7 +7,7 @@ anchors:
       as does a file that git reports has moved. Block-level findings set a non-zero exit;
       warnings alone keep exit 0.
     at: surf-cli/src/lint.rs > lint_site
-    hash: 1ec63fccf77f
+    hash: 2:69018813a373
   - claim: >
       Advisory granularity guidance (§8), never blocking: lint_under_coverage flags public
       symbols — top-level functions and methods — in an already-anchored file that no claim
@@ -16,14 +16,14 @@ anchors:
       uncovered symbol is reported once against the file's first anchoring hub. It runs only on
       files whose anchors all resolved cleanly, so coverage nags never pile onto broken anchors.
     at: surf-cli/src/lint.rs > lint_under_coverage
-    hash: 569a7e6fe417
+    hash: 2:3ca608c27462
   - claim: >
       AGENTS.md enforcement is opt-in (§11.6): only when the file carries a surf:hubs marker
       block does lint require it to link the configured hubs directory (which must exist),
       blocking otherwise. It points agents at the directory to search — never enumerating
       individual hubs, which would push an agent to read everything.
     at: surf-cli/src/lint.rs > lint_agents_pointer
-    hash: 938380798f7a
+    hash: 2:9a5f7d9fd0db
 refs: []
 ---
 
