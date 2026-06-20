@@ -7,19 +7,24 @@
 //! This covers symbol renames within a file (the common case). A *file* rename makes the
 //! anchor's path unreadable; that surfaces as a broken reference at the `lint` layer.
 
-use crate::hash::{hash_node, HashOpts};
+use crate::hash::{hash_node, parse_stamp, HashOpts};
 use crate::lang::Lang;
 use crate::resolve::{collect_all_defs, parse_tree, ResolveError};
 
 /// If some current symbol's canonical hash equals `stored_hash`, return its name — the
 /// symbol the anchor was probably renamed to. `opts` must match the mode the stored hash was
-/// computed in (e.g. a claim with `ignore_literals`), or a renamed symbol won't match.
+/// computed in (e.g. a claim with `ignore_literals`), or a renamed symbol won't match. The
+/// stored stamp's recipe (v1/v2) is honoured, so a renamed-but-unchanged symbol relocates
+/// whether or not its stamp has been upgraded yet.
 pub fn find_renamed(
     source: &str,
     lang: Lang,
     stored_hash: &str,
     opts: HashOpts,
 ) -> Result<Option<String>, ResolveError> {
+    let Some((recipe, stored_hex)) = parse_stamp(stored_hash) else {
+        return Ok(None);
+    };
     let tree = parse_tree(source, lang).ok_or(ResolveError::Parse)?;
     let src = source.as_bytes();
     let family = lang.family();
@@ -27,7 +32,7 @@ pub fn find_renamed(
     let mut defs = Vec::new();
     collect_all_defs(tree.root_node(), src, family, &mut defs);
     for (name, node) in defs {
-        if hash_node(node, src, family, opts) == stored_hash {
+        if hash_node(node, src, family, opts, recipe) == stored_hex {
             return Ok(Some(name));
         }
     }

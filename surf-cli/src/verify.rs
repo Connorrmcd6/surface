@@ -11,8 +11,8 @@ use anyhow::{Context, Result};
 use serde::Serialize;
 use std::process::ExitCode;
 use surf_core::{
-    combine_site_hashes, find_renamed, hash_anchor_with, parse_anchor, parse_hub, set_anchor_at,
-    set_anchor_hash, HashOpts,
+    combine_site_hashes, find_renamed, format_stamp, hash_anchor_raw, hash_anchor_with,
+    parse_anchor, parse_hub, parse_stamp, set_anchor_at, set_anchor_hash, HashOpts, Recipe,
 };
 
 enum Plan {
@@ -196,11 +196,15 @@ fn plan_claim(ws: &Workspace, claim: &surf_core::Claim, follow: bool) -> Plan {
 
     match failure {
         None => {
+            // verify always (re-)stamps under the current recipe, so one pass also upgrades a
+            // still-matching v1 stamp to v2 — a narrow, intentional exception to #22's
+            // skip-unchanged (#140).
             let combined = combine_site_hashes(&site_hashes);
-            if claim.hash.as_deref() == Some(combined.as_str()) {
+            let new_stamp = format_stamp(Recipe::CURRENT, &combined);
+            if claim.hash.as_deref() == Some(new_stamp.as_str()) {
                 Plan::Unchanged
             } else {
-                Plan::Hash(combined)
+                Plan::Hash(new_stamp)
             }
         }
         Some(reason) if !follow => Plan::Skip(reason),
@@ -270,13 +274,13 @@ fn follow_file(ws: &Workspace, site: &str, stored: &str, opts: HashOpts) -> Plan
         Ok(parts) => parts,
         Err(e) => return Plan::Skip(e.to_string()),
     };
-    // Same symbol path, code unchanged → re-point with the identical hash.
-    if let Ok(h) = hash_anchor_with(&source, lang, &new_anchor, opts) {
-        if h == stored {
-            return Plan::Follow {
-                new_at,
-                new_hash: h,
-            };
+    // Same symbol path, code unchanged under the stored recipe → re-point, upgrading the stamp
+    // to the current recipe (the move is a chance to migrate v1 → v2).
+    if let Some((recipe, stored_hex)) = parse_stamp(stored) {
+        if hash_anchor_raw(&source, lang, &new_anchor, opts, recipe).as_deref() == Ok(stored_hex) {
+            if let Ok(new_hash) = hash_anchor_with(&source, lang, &new_anchor, opts) {
+                return Plan::Follow { new_at, new_hash };
+            }
         }
     }
     // The symbol may also have been renamed in the move (single-segment only).
@@ -286,9 +290,11 @@ fn follow_file(ws: &Workspace, site: &str, stored: &str, opts: HashOpts) -> Plan
     Plan::Skip("file moved but its anchored code changed; run `surf lint`".into())
 }
 
+/// One site's bare per-site digest under the current recipe — combined and prefixed into the
+/// stored stamp by the caller. Bare (not a full stamp) so multi-site combination stays correct.
 fn site_hash(ws: &Workspace, site: &str, opts: HashOpts) -> std::result::Result<String, String> {
     let (source, lang, anchor) = read_site(ws, site).map_err(|e| e.to_string())?;
-    hash_anchor_with(&source, lang, &anchor, opts).map_err(|e| e.to_string())
+    hash_anchor_raw(&source, lang, &anchor, opts, Recipe::CURRENT).map_err(|e| e.to_string())
 }
 
 #[cfg(test)]
@@ -296,7 +302,7 @@ mod tests {
     use super::*;
     use std::fs;
     use std::path::Path;
-    use surf_core::{hash_anchor, Lang};
+    use surf_core::{hash_anchor, hash_anchor_raw, HashOpts, Lang, Recipe};
 
     fn write(root: &Path, rel: &str, content: &str) {
         let p = root.join(rel);
@@ -346,6 +352,49 @@ mod tests {
         assert_eq!(report.errors, 0);
         assert!(report.updated_files.is_empty());
         assert_eq!(fs::read_to_string(root.join("hubs/a.md")).unwrap(), after);
+    }
+
+    #[test]
+    fn verify_upgrades_v1_stamp_to_v2() {
+        // A repo stamped under the old recipe: one `surf verify` re-stamps the still-matching v1
+        // anchor as v2 (the narrow exception to skip-unchanged), and is then idempotent (#140).
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let src = "pub fn add(a: i64, b: i64) -> i64 { a + b }\n";
+        let v1 = hash_anchor_raw(
+            src,
+            Lang::Rust,
+            &parse_anchor("src/m.rs > add").unwrap(),
+            HashOpts::default(),
+            Recipe::V1,
+        )
+        .unwrap();
+        assert!(!v1.contains(':'), "starts as a bare v1 stamp");
+        write(root, "surf.toml", "");
+        write(root, "src/m.rs", src);
+        write(
+            root,
+            "hubs/a.md",
+            &format!("---\nsummary: s\nanchors:\n  - claim: add sums\n    at: src/m.rs > add\n    hash: {v1}\n---\n"),
+        );
+
+        let ws = Workspace::discover(root).unwrap();
+        let report = verify_all(&ws, None, false).unwrap();
+        assert_eq!(report.stamped, 1, "the v1 anchor is re-stamped to v2");
+
+        let expected =
+            hash_anchor(src, Lang::Rust, &parse_anchor("src/m.rs > add").unwrap()).unwrap();
+        assert!(expected.starts_with("2:"));
+        let hub = parse_hub(&fs::read_to_string(root.join("hubs/a.md")).unwrap()).unwrap();
+        assert_eq!(
+            hub.frontmatter.anchors[0].hash.as_deref(),
+            Some(expected.as_str())
+        );
+
+        // Idempotent on the upgraded stamp.
+        let again = verify_all(&ws, None, false).unwrap();
+        assert_eq!(again.stamped, 0);
+        assert_eq!(again.unchanged, 1);
     }
 
     #[test]

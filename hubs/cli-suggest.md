@@ -13,7 +13,7 @@ anchors:
       never writes a file and never computes or stamps a hash — the author edits the claims and
       verifies.
     at: surf-cli/src/suggest.rs > run
-    hash: 5b5ebe5de616
+    hash: 2:6d5ea2dc7760
 refs: []
 ---
 

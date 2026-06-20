@@ -9,18 +9,18 @@ anchors:
       same-name stubs plus their implementation, in the same scope) counts as one match, so
       the bare name resolves without @N and the gated span covers every overload signature.
     at: surf-core/src/resolve.rs > resolve_nodes
-    hash: a704a3bbec34
+    hash: 2:26a42e2bfa92
   - claim: >
       Go is resolved by a dedicated path: its symbols are flat (no nested declarations) and
       methods attach to a type by receiver, so `Type > Method` matches a method_declaration
       whose receiver type equals the type.
     at: surf-core/src/resolve.rs > resolve_go
-    hash: 82b3f6e863cf
+    hash: 2:07d730bc2bf8
   - claim: >
       Rename detection enumerates every definition at any depth so a renamed-but-unchanged
       symbol can be found by hash.
     at: surf-core/src/resolve.rs > collect_all_defs
-    hash: a75886451d68
+    hash: 2:22d81a580041
 refs: []
 ---
 

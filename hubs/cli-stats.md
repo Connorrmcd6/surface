@@ -6,7 +6,7 @@ anchors:
       always exits 0 on success and surfaces an error (non-zero) only when git history is
       unavailable. The metrics are advisory and never gate.
     at: surf-cli/src/stats.rs > run
-    hash: 7f4ab96fac92
+    hash: 2:7f4ab96fac92
   - claim: >
       compute reads the whole since/until window from one streamed git log and scores each
       non-merge commit, propagating hub claim state incrementally — a commit inherits its first
@@ -19,7 +19,7 @@ anchors:
       and missing git history or an invalid hub glob in surf.toml is a hard error rather than a
       silent zero or a quietly-narrowed hub set.
     at: surf-cli/src/stats.rs > compute
-    hash: c4d39cabab48
+    hash: 2:73bc9fa9daac
 refs: ["../docs/guides/stats.md"]
 ---
 

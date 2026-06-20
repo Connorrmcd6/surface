@@ -10,8 +10,8 @@ use crate::workspace::{read_site, Workspace};
 use anyhow::Result;
 use std::process::ExitCode;
 use surf_core::{
-    diff_magnitude, hash_anchor_with, parse_anchor, resolve, CheckReport, Divergence,
-    DivergenceKind, HashOpts, HubError,
+    combine_site_hashes, diff_magnitude, format_stamp, hash_anchor_raw, parse_anchor, parse_stamp,
+    resolve, CheckReport, Divergence, DivergenceKind, HashOpts, HubError, Recipe,
 };
 
 pub fn run(
@@ -20,7 +20,7 @@ pub fn run(
     base: Option<&str>,
     files: &[String],
 ) -> Result<ExitCode> {
-    let (divergences, unmatched_globs) = check_workspace(ws, base, files)?;
+    let (divergences, unmatched_globs, v1_clean) = check_workspace(ws, base, files)?;
 
     match format {
         Format::Json => {
@@ -34,6 +34,11 @@ pub fn run(
     for pattern in &unmatched_globs {
         eprintln!("surf check: --files glob \"{pattern}\" matched no anchored files.");
     }
+    // One-line migration nudge: a clean v1 stamp passes, but invites the one-time upgrade so
+    // the span gains the v2 member-access protection (#140).
+    if v1_clean > 0 {
+        eprintln!("surf check: {v1_clean} anchor(s) use v1 hashes; run `surf verify` to upgrade.");
+    }
     // A typo'd --files scopes the gate to nothing and must not go green (#78); but only
     // when *every* glob matched nothing, so a partially-correct invocation still succeeds.
     let all_empty = !files.is_empty() && unmatched_globs.len() == files.len();
@@ -45,18 +50,20 @@ pub fn run(
     })
 }
 
-/// Returns the divergences in scope plus the `--files` patterns that matched no anchored
-/// file, so the caller can refuse to call a run that checked nothing "clean" (#78).
+/// Returns the divergences in scope, the `--files` patterns that matched no anchored file (so
+/// the caller can refuse to call a run that checked nothing "clean", #78), and the count of
+/// clean anchors still stamped under v1 (so the caller can nudge the one-time upgrade, #140).
 fn check_workspace(
     ws: &Workspace,
     base: Option<&str>,
     files: &[String],
-) -> Result<(Vec<Divergence>, Vec<String>)> {
+) -> Result<(Vec<Divergence>, Vec<String>, usize)> {
     let mut scope = Scope::build(ws, base, files)?;
     // Enrichment always needs a ref; an explicit --base doubles as the diff base, else HEAD.
     let enrich_base = base.unwrap_or("HEAD");
 
     let mut out = Vec::new();
+    let mut v1_clean = 0usize;
     for loaded in ws.iter_hubs()? {
         let hub = match loaded.hub {
             Ok(hub) => hub,
@@ -71,12 +78,14 @@ fn check_workspace(
             if !scope.includes(claim) {
                 continue;
             }
-            if let Some(d) = check_claim(ws, &loaded.rel, claim, enrich_base) {
-                out.push(d);
+            match check_claim(ws, &loaded.rel, claim, enrich_base) {
+                ClaimCheck::Diverged(d) => out.push(*d),
+                ClaimCheck::Clean { v1: true } => v1_clean += 1,
+                ClaimCheck::Clean { v1: false } => {}
             }
         }
     }
-    Ok((out, scope.unmatched_globs()))
+    Ok((out, scope.unmatched_globs(), v1_clean))
 }
 
 fn malformed_hub_divergence(hub: &str, err: &HubError) -> Divergence {
@@ -169,12 +178,14 @@ impl Scope {
     }
 }
 
-fn check_claim(
-    ws: &Workspace,
-    hub: &str,
-    claim: &surf_core::Claim,
-    base: &str,
-) -> Option<Divergence> {
+/// What checking one claim produced: a flag to report, or a clean pass tagged with whether the
+/// matching stamp was still v1 (so the caller can nudge the one-time upgrade, #140).
+enum ClaimCheck {
+    Diverged(Box<Divergence>),
+    Clean { v1: bool },
+}
+
+fn check_claim(ws: &Workspace, hub: &str, claim: &surf_core::Claim, base: &str) -> ClaimCheck {
     let prose = claim.claim.trim().to_string();
     let opts = HashOpts {
         ignore_literals: claim.ignore_literals,
@@ -184,7 +195,7 @@ fn check_claim(
     let single = sites.len() == 1;
 
     let mk = |kind, old_hash, new_hash, old_code, new_code, magnitude, detail| {
-        Some(Divergence {
+        ClaimCheck::Diverged(Box::new(Divergence {
             hub: hub.to_string(),
             claim: prose.clone(),
             at: at_display.clone(),
@@ -196,7 +207,7 @@ fn check_claim(
             prose: prose.clone(),
             magnitude,
             detail,
-        })
+        }))
     };
     let unresolvable = |detail: String| {
         mk(
@@ -210,7 +221,22 @@ fn check_claim(
         )
     };
 
-    // Resolve and hash every site; the claim's hash is the combination (§6.3).
+    // Hash under the stored stamp's own recipe, so an as-yet-unupgraded v1 stamp still verifies
+    // in v1 mode; the current recipe is only assumed for an unverified claim. An unrecognized
+    // stamp prefix (e.g. from a newer surf) is unverifiable — fail closed (#140).
+    let recipe = match &claim.hash {
+        None => Recipe::CURRENT,
+        Some(stored) => match parse_stamp(stored) {
+            Some((r, _)) => r,
+            None => {
+                return unresolvable(format!(
+                    "unrecognized hash version in `{stored}`; re-stamp with `surf verify`"
+                ))
+            }
+        },
+    };
+
+    // Resolve and hash every site under `recipe`; the claim's stamp is the combination (§6.3).
     let mut site_hashes = Vec::with_capacity(sites.len());
     let mut first_new_code = None;
     for site in sites {
@@ -227,41 +253,49 @@ fn check_claim(
                 .get(span.start_byte..span.end_byte)
                 .map(str::to_string);
         }
-        let hash = match hash_anchor_with(&current, lang, &anchor, opts) {
+        let hash = match hash_anchor_raw(&current, lang, &anchor, opts, recipe) {
             Ok(h) => h,
             Err(e) => return unresolvable(e.to_string()),
         };
         site_hashes.push(hash);
     }
-    let new_hash = surf_core::combine_site_hashes(&site_hashes);
+    let combined = combine_site_hashes(&site_hashes);
+    let new_stamp = format_stamp(recipe, &combined);
 
     match &claim.hash {
         None => mk(
             DivergenceKind::Unverified,
             None,
-            Some(new_hash),
+            Some(new_stamp),
             None,
             first_new_code,
             None,
             None,
         ),
-        Some(stored) if *stored == new_hash => None, // clean
         Some(stored) => {
-            // Best-effort old_code + magnitude from git, for single-site anchors only.
-            let (old_code, magnitude) = if single {
-                enrich_from_git(ws, base, &sites[0])
+            // `recipe` was parsed from `stored`, so the hex is present.
+            let stored_hex = parse_stamp(stored).map(|(_, hex)| hex).unwrap_or_default();
+            if combined == stored_hex {
+                ClaimCheck::Clean {
+                    v1: recipe == Recipe::V1,
+                }
             } else {
-                (None, None)
-            };
-            mk(
-                DivergenceKind::Changed,
-                Some(stored.clone()),
-                Some(new_hash),
-                old_code,
-                first_new_code,
-                magnitude,
-                None,
-            )
+                // Best-effort old_code + magnitude from git, for single-site anchors only.
+                let (old_code, magnitude) = if single {
+                    enrich_from_git(ws, base, &sites[0])
+                } else {
+                    (None, None)
+                };
+                mk(
+                    DivergenceKind::Changed,
+                    Some(stored.clone()),
+                    Some(new_stamp),
+                    old_code,
+                    first_new_code,
+                    magnitude,
+                    None,
+                )
+            }
         }
     }
 }
@@ -326,7 +360,7 @@ mod tests {
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
-    use surf_core::{hash_anchor, parse_anchor, Lang};
+    use surf_core::{hash_anchor, hash_anchor_raw, parse_anchor, Lang, Recipe};
 
     fn write(root: &Path, rel: &str, content: &str) {
         let p = root.join(rel);
@@ -342,6 +376,18 @@ mod tests {
 
     fn stored_hash(src: &str, anchor: &str) -> String {
         hash_anchor(src, Lang::Rust, &parse_anchor(anchor).unwrap()).unwrap()
+    }
+
+    /// A bare (v1) Rust stamp, simulating an anchor stamped before versioned recipes.
+    fn v1_stamp(src: &str, anchor: &str) -> String {
+        hash_anchor_raw(
+            src,
+            Lang::Rust,
+            &parse_anchor(anchor).unwrap(),
+            HashOpts::default(),
+            Recipe::V1,
+        )
+        .unwrap()
     }
 
     fn git(root: &Path, args: &[&str]) {
@@ -660,7 +706,7 @@ mod tests {
         let ws = ws_at(root.to_path_buf());
 
         let typo = "src/lables/*.rs".to_string();
-        let (d, unmatched) = check_workspace(&ws, None, std::slice::from_ref(&typo)).unwrap();
+        let (d, unmatched, _) = check_workspace(&ws, None, std::slice::from_ref(&typo)).unwrap();
         assert!(d.is_empty());
         assert_eq!(unmatched, vec![typo.clone()]);
 
@@ -686,7 +732,7 @@ mod tests {
         let ws = ws_at(root.to_path_buf());
 
         let globs = vec!["src/*.rs".to_string(), "zzz/nope/*.go".to_string()];
-        let (d, unmatched) = check_workspace(&ws, None, &globs).unwrap();
+        let (d, unmatched, _) = check_workspace(&ws, None, &globs).unwrap();
         assert!(d.is_empty());
         assert_eq!(unmatched, vec!["zzz/nope/*.go".to_string()]);
 
@@ -727,7 +773,7 @@ mod tests {
         );
         let ws = ws_at(root.to_path_buf());
 
-        let (d, unmatched) =
+        let (d, unmatched, _) =
             check_workspace(&ws, Some("HEAD"), &["src/b*.rs".to_string()]).unwrap();
         assert!(d.is_empty()); // b is unchanged and a is excluded by the glob
         assert!(unmatched.is_empty(), "glob matched an anchored file");
@@ -794,5 +840,114 @@ mod tests {
         two_diverged_files(root);
         let ws = ws_at(root.to_path_buf());
         assert_eq!(check_workspace(&ws, None, &[]).unwrap().0.len(), 2);
+    }
+
+    #[test]
+    fn clean_v1_stamp_passes_and_is_counted_for_nudge() {
+        // An anchor stamped under the old (bare-hex) recipe verifies in v1 mode: still clean, so
+        // it passes — but it's counted so the caller can nudge `surf verify` to upgrade (#140).
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let src = "pub fn add(a: i64, b: i64) -> i64 { a + b }\n";
+        let h = v1_stamp(src, "src/m.rs > add");
+        assert!(!h.contains(':'), "v1 stamp is bare hex");
+        write(root, "surf.toml", "");
+        write(root, "src/m.rs", src);
+        write(
+            root,
+            "hubs/a.md",
+            &format!("---\nsummary: x\nanchors:\n  - claim: add sums\n    at: src/m.rs > add\n    hash: {h}\n---\n"),
+        );
+
+        let (d, _unmatched, v1_clean) =
+            check_workspace(&ws_at(root.to_path_buf()), None, &[]).unwrap();
+        assert!(d.is_empty(), "clean v1 stamp must pass");
+        assert_eq!(
+            v1_clean, 1,
+            "the clean v1 anchor is counted for the upgrade nudge"
+        );
+    }
+
+    #[test]
+    fn changed_v1_anchor_still_diverges() {
+        // v1-compat does not weaken the gate: a v1 stamp whose code actually changed fails.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let v1 = "pub fn add(a: i64, b: i64) -> i64 { a + b }\n";
+        let h = v1_stamp(v1, "src/m.rs > add");
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "src/m.rs",
+            "pub fn add(a: i64, b: i64) -> i64 { a - b }\n",
+        );
+        write(
+            root,
+            "hubs/a.md",
+            &format!("---\nsummary: x\nanchors:\n  - claim: add sums\n    at: src/m.rs > add\n    hash: {h}\n---\n"),
+        );
+
+        let (d, _, v1_clean) = check_workspace(&ws_at(root.to_path_buf()), None, &[]).unwrap();
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].kind, DivergenceKind::Changed);
+        assert_eq!(v1_clean, 0, "a diverged anchor is not a clean-v1 nudge");
+    }
+
+    #[test]
+    fn member_reference_swap_diverges_under_v2() {
+        // The headline #140 fix, end to end: a v2-stamped TS anchor whose only change is the
+        // member name (`PointsTier.TIER_1` → `TIER_2`) now fails the gate.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let before = "export class S {\n  tier(): T {\n    return PointsTier.TIER_1;\n  }\n}\n";
+        let stamp = hash_anchor(
+            before,
+            Lang::TypeScript,
+            &parse_anchor("src/s.ts > S > tier").unwrap(),
+        )
+        .unwrap();
+        assert!(stamp.starts_with("2:"), "new stamps are v2");
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "src/s.ts",
+            "export class S {\n  tier(): T {\n    return PointsTier.TIER_2;\n  }\n}\n",
+        );
+        write(
+            root,
+            "hubs/a.md",
+            &format!("---\nsummary: x\nanchors:\n  - claim: default tier is TIER_1\n    at: src/s.ts > S > tier\n    hash: {stamp}\n---\n"),
+        );
+
+        let d = check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0;
+        assert_eq!(d.len(), 1, "member swap must diverge under v2");
+        assert_eq!(d[0].kind, DivergenceKind::Changed);
+    }
+
+    #[test]
+    fn unrecognized_hash_version_fails_closed() {
+        // A stamp from a newer surf (or a corrupted prefix) is unverifiable — it must not pass.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(root, "surf.toml", "");
+        write(root, "src/m.rs", "pub fn add() -> i64 { 1 }\n");
+        write(
+            root,
+            "hubs/a.md",
+            "---\nsummary: x\nanchors:\n  - claim: c\n    at: src/m.rs > add\n    hash: 9:abcdef123456\n---\n",
+        );
+
+        let d = check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0;
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].kind, DivergenceKind::Unresolvable);
+        assert!(d[0]
+            .detail
+            .as_deref()
+            .unwrap()
+            .contains("unrecognized hash version"));
     }
 }
