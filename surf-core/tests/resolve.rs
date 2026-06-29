@@ -238,6 +238,25 @@ fn span_lines_are_one_based() {
     assert!(s.start_line >= 1 && s.end_line >= s.start_line);
 }
 
+// --- Unicode identifiers (#45) ----------------------------------------------
+
+#[test]
+fn unicode_identifier_resolves_across_families() {
+    // Non-ASCII symbol names must resolve to the Unicode-named body, with no locale/encoding
+    // sensitivity. Pairs with the pinned hashes in golden_hash.rs.
+    let rs = "pub fn café(δ: i64) -> i64 {\n    δ\n}\n";
+    assert!(snippet(rs, span(rs, Lang::Rust, "x.rs > café")).contains("δ"));
+
+    let ts = "export function café(δ: string): string {\n  return δ;\n}\n";
+    assert!(snippet(ts, span(ts, Lang::TypeScript, "x.ts > café")).contains("return δ"));
+
+    let py = "def café(δ):\n    return δ\n";
+    assert!(snippet(py, span(py, Lang::Python, "x.py > café")).contains("return δ"));
+
+    let go = "func Café(δ int) int {\n\treturn δ\n}\n";
+    assert!(snippet(go, span(go, Lang::Go, "x.go > Café")).contains("return δ"));
+}
+
 // --- Python module-level if/try blocks (#81) --------------------------------
 
 const GUARDED_PY: &str = r#"
