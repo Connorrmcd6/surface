@@ -8,13 +8,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased]
 
 ### Added
-- **`refs` hub composition — validation pass (#4).** A hub's `refs:` now compose *other hubs*: a
-  path relative to the referencing hub (`./resolve.md`), optionally `> symbol` to address one claim
-  within the target (matched against that claim's `at:` anchor). `surf lint` blocks a ref that
-  doesn't resolve to a loaded hub, points at its own hub, or names a claim the target lacks — the
-  same fail-on-typo discipline as `covers`. The `check` verdict does **not** read `refs` yet
-  (staleness does not propagate across hubs); this ships the validated navigation graph first, per
-  the §9.3 unlock discipline. The repo's own hubs now declare their cross-hub `refs`, and the two
+- **`refs` hub composition (#4).** A hub's `refs:` now compose *other hubs*: a path relative to the
+  referencing hub (`./resolve.md`), optionally `> symbol` to address one claim within the target
+  (matched against that claim's `at:` anchor). `surf lint` blocks a ref that doesn't resolve to a
+  loaded hub, points at its own hub, or names a claim the target lacks — the same fail-on-typo
+  discipline as `covers`. The `surf check` gate then **propagates staleness one hop**: a hub that
+  directly references a stale hub (or a stale claim within one) inherits a `referenced_stale`
+  divergence and fails the gate, so the signal that flags a dependency flags everything composed on
+  it. Propagation is one-hop by construction (built only from base divergences), so a chain
+  `A → B → C` doesn't cascade. The repo's own hubs now declare their cross-hub `refs`, and the two
   prior doc-pointing `refs` were reclassified to prose links.
 - **`surf lint` consolidation nudges (#142).** Two advisory warnings push hubs away from the
   "claim-log" shape (one claim per function) and toward onboarding docs: a *claim-log* warning

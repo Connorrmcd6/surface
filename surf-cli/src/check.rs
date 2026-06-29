@@ -6,12 +6,13 @@
 
 use crate::format::Format;
 use crate::git;
-use crate::workspace::{read_site, Workspace};
+use crate::workspace::{read_site, resolve_ref_path, Workspace};
 use anyhow::Result;
+use std::collections::HashMap;
 use std::process::ExitCode;
 use surf_core::{
-    combine_site_hashes, diff_magnitude, format_stamp, hash_anchor_raw, parse_anchor, parse_stamp,
-    resolve, CheckReport, Divergence, DivergenceKind, HashOpts, HubError, Recipe,
+    combine_site_hashes, diff_magnitude, format_stamp, hash_anchor_raw, parse_anchor, parse_ref,
+    parse_stamp, resolve, CheckReport, Divergence, DivergenceKind, HashOpts, HubError, Recipe,
 };
 
 pub fn run(
@@ -62,14 +63,23 @@ fn check_workspace(
     // Enrichment always needs a ref; an explicit --base doubles as the diff base, else HEAD.
     let enrich_base = base.unwrap_or("HEAD");
 
+    let loaded = ws.iter_hubs()?;
     let mut out = Vec::new();
     let mut v1_clean = 0usize;
-    for loaded in ws.iter_hubs()? {
-        let hub = match loaded.hub {
+    // Which hubs carry an open divergence, and the anchor-segment path of each diverged claim —
+    // the input to ref propagation below. A hub is keyed here the moment any of its claims (or the
+    // hub itself) diverges; the paths let a claim-level `ref` (`> symbol`) check the *specific*
+    // claim rather than the whole hub.
+    let mut stale: HashMap<&str, Vec<Vec<String>>> = HashMap::new();
+
+    for loaded_hub in &loaded {
+        let rel = loaded_hub.rel.as_str();
+        let hub = match &loaded_hub.hub {
             Ok(hub) => hub,
             Err(e) => {
                 // The gate fails closed: an unparseable hub is unenforceable, not clean.
-                out.push(malformed_hub_divergence(&loaded.rel, &e));
+                out.push(malformed_hub_divergence(rel, e));
+                stale.entry(rel).or_default();
                 continue;
             }
         };
@@ -78,14 +88,80 @@ fn check_workspace(
             if !scope.includes(claim) {
                 continue;
             }
-            match check_claim(ws, &loaded.rel, claim, enrich_base) {
-                ClaimCheck::Diverged(d) => out.push(*d),
+            match check_claim(ws, rel, claim, enrich_base) {
+                ClaimCheck::Diverged(d) => {
+                    let paths = stale.entry(rel).or_default();
+                    for site in claim.at.sites() {
+                        if let Ok(a) = parse_anchor(site) {
+                            paths.push(a.segments.iter().map(|s| s.name.clone()).collect());
+                        }
+                    }
+                    out.push(*d);
+                }
                 ClaimCheck::Clean { v1: true } => v1_clean += 1,
                 ClaimCheck::Clean { v1: false } => {}
             }
         }
     }
+
+    out.extend(propagate_refs(&loaded, &stale));
     Ok((out, scope.unmatched_globs(), v1_clean))
+}
+
+/// One-hop `refs` propagation (§9.3, #4): a hub that directly references a stale hub (or a stale
+/// claim within one) inherits a `ReferencedStale` divergence, so the gate that flags the
+/// dependency also flags everything composed on top of it. Built only from base divergences —
+/// never from other propagated ones — so a chain A→B→C stops at one hop. Malformed `refs` are
+/// skipped here; surfacing them is `lint`'s job.
+fn propagate_refs(
+    loaded: &[crate::workspace::LoadedHub],
+    stale: &HashMap<&str, Vec<Vec<String>>>,
+) -> Vec<Divergence> {
+    let mut out = Vec::new();
+    for loaded_hub in loaded {
+        let Ok(hub) = &loaded_hub.hub else { continue };
+        for raw in &hub.frontmatter.refs {
+            let Ok(parsed) = parse_ref(raw) else { continue };
+            let target = resolve_ref_path(&loaded_hub.rel, &parsed.path);
+            let Some(paths) = stale.get(target.as_str()) else {
+                continue;
+            };
+            let detail = if parsed.segments.is_empty() {
+                format!(
+                    "referenced hub `{target}` has an open divergence — review it, then re-verify"
+                )
+            } else {
+                let names: Vec<&str> = parsed.segments.iter().map(|s| s.name.as_str()).collect();
+                let matched = paths.iter().any(|p| {
+                    p.iter()
+                        .map(String::as_str)
+                        .collect::<Vec<_>>()
+                        .ends_with(&names)
+                });
+                if !matched {
+                    continue;
+                }
+                format!(
+                    "referenced claim `{}` in `{target}` has diverged — review it, then re-verify",
+                    names.join(" > ")
+                )
+            };
+            out.push(Divergence {
+                hub: loaded_hub.rel.clone(),
+                claim: String::new(),
+                at: raw.clone(),
+                kind: DivergenceKind::ReferencedStale,
+                old_hash: None,
+                new_hash: None,
+                old_code: None,
+                new_code: None,
+                prose: String::new(),
+                magnitude: None,
+                detail: Some(detail),
+            });
+        }
+    }
+    out
 }
 
 fn malformed_hub_divergence(hub: &str, err: &HubError) -> Divergence {
@@ -326,6 +402,7 @@ fn print_human(divergences: &[Divergence]) {
             DivergenceKind::Changed => ("DIVERGED", None),
             DivergenceKind::Unverified => ("UNVERIFIED", Some("run `surf verify`")),
             DivergenceKind::Unresolvable => ("UNRESOLVED", Some("run `surf lint`")),
+            DivergenceKind::ReferencedStale => ("REF-STALE", None),
         };
         println!("{tag}  {} :: {}", d.hub, d.at);
         if let Some(detail) = &d.detail {
@@ -949,5 +1026,159 @@ mod tests {
             .as_deref()
             .unwrap()
             .contains("unrecognized hash version"));
+    }
+
+    // --- refs composition: staleness propagation (#4, PR2) ----------------------
+
+    #[test]
+    fn ref_to_stale_hub_propagates() {
+        // b.md seals `add`; the working tree diverges it. a.md refs ./b.md, so a.md inherits a
+        // REF-STALE divergence alongside b.md's own DIVERGED.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let orig = "pub fn add(a: i64, b: i64) -> i64 { a + b }\n";
+        let h = stored_hash(orig, "src/m.rs > add");
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "src/m.rs",
+            "pub fn add(a: i64, b: i64) -> i64 { a - b }\n",
+        );
+        write(
+            root,
+            "hubs/b.md",
+            &format!("---\nsummary: y\nanchors:\n  - claim: add sums\n    at: src/m.rs > add\n    hash: {h}\n---\n"),
+        );
+        write(
+            root,
+            "hubs/a.md",
+            "---\nsummary: x\nrefs:\n  - ./b.md\n---\n",
+        );
+
+        let d = check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0;
+        assert_eq!(d.len(), 2, "b diverges and a inherits: {d:?}");
+        assert!(d
+            .iter()
+            .any(|x| x.hub == "hubs/b.md" && x.kind == DivergenceKind::Changed));
+        let refstale = d
+            .iter()
+            .find(|x| x.kind == DivergenceKind::ReferencedStale)
+            .expect("expected a propagated REF-STALE");
+        assert_eq!(refstale.hub, "hubs/a.md");
+        assert_eq!(refstale.at, "./b.md");
+        assert!(refstale.detail.as_deref().unwrap().contains("hubs/b.md"));
+    }
+
+    #[test]
+    fn ref_to_clean_hub_does_not_propagate() {
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let src = "pub fn add(a: i64, b: i64) -> i64 { a + b }\n";
+        let h = stored_hash(src, "src/m.rs > add");
+        write(root, "surf.toml", "");
+        write(root, "src/m.rs", src);
+        write(
+            root,
+            "hubs/b.md",
+            &format!("---\nsummary: y\nanchors:\n  - claim: add sums\n    at: src/m.rs > add\n    hash: {h}\n---\n"),
+        );
+        write(
+            root,
+            "hubs/a.md",
+            "---\nsummary: x\nrefs:\n  - ./b.md\n---\n",
+        );
+
+        assert!(check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0
+            .is_empty());
+    }
+
+    #[test]
+    fn claim_level_ref_targets_the_named_claim() {
+        // b.md seals two claims; only `add` diverges. A ref to `./b.md > add` propagates; a ref to
+        // the still-clean `./b.md > other` does not — claim-level refs are precise.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let orig = "pub fn add(a: i64, b: i64) -> i64 { a + b }\npub fn other() -> i64 { 1 }\n";
+        let hadd = stored_hash(orig, "src/m.rs > add");
+        let hother = stored_hash(orig, "src/m.rs > other");
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "src/m.rs",
+            "pub fn add(a: i64, b: i64) -> i64 { a - b }\npub fn other() -> i64 { 1 }\n",
+        );
+        write(
+            root,
+            "hubs/b.md",
+            &format!("---\nsummary: y\nanchors:\n  - claim: add\n    at: src/m.rs > add\n    hash: {hadd}\n  - claim: other\n    at: src/m.rs > other\n    hash: {hother}\n---\n"),
+        );
+        write(
+            root,
+            "hubs/a.md",
+            "---\nsummary: x\nrefs:\n  - ./b.md > add\n---\n",
+        );
+        write(
+            root,
+            "hubs/e.md",
+            "---\nsummary: z\nrefs:\n  - ./b.md > other\n---\n",
+        );
+
+        let d = check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0;
+        let refstale: Vec<_> = d
+            .iter()
+            .filter(|x| x.kind == DivergenceKind::ReferencedStale)
+            .collect();
+        assert_eq!(
+            refstale.len(),
+            1,
+            "only the ref to the diverged claim fires"
+        );
+        assert_eq!(refstale[0].hub, "hubs/a.md");
+    }
+
+    #[test]
+    fn propagation_is_one_hop() {
+        // c.md → a.md → b.md, with b.md stale. a.md inherits REF-STALE; c.md does NOT, because a's
+        // own claims are clean and propagation is built only from base divergences.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        let orig = "pub fn add(a: i64, b: i64) -> i64 { a + b }\n";
+        let h = stored_hash(orig, "src/m.rs > add");
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "src/m.rs",
+            "pub fn add(a: i64, b: i64) -> i64 { a - b }\n",
+        );
+        write(
+            root,
+            "hubs/b.md",
+            &format!("---\nsummary: b\nanchors:\n  - claim: add\n    at: src/m.rs > add\n    hash: {h}\n---\n"),
+        );
+        write(
+            root,
+            "hubs/a.md",
+            "---\nsummary: a\nrefs:\n  - ./b.md\n---\n",
+        );
+        write(
+            root,
+            "hubs/c.md",
+            "---\nsummary: c\nrefs:\n  - ./a.md\n---\n",
+        );
+
+        let d = check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0;
+        assert!(
+            !d.iter().any(|x| x.hub == "hubs/c.md"),
+            "one-hop: c must not inherit through a clean a: {d:?}"
+        );
+        assert_eq!(d.len(), 2, "only b (DIVERGED) and a (REF-STALE): {d:?}");
     }
 }

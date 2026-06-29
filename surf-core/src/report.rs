@@ -46,6 +46,9 @@ pub enum DivergenceKind {
     Unverified,
     /// The anchor no longer resolves to exactly one symbol (run `surf lint`).
     Unresolvable,
+    /// A hub this one `refs` has an open divergence — composition propagated (§9.3, #4). One-hop:
+    /// only a *direct* ref to a stale hub fires this, never a transitive chain.
+    ReferencedStale,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -65,8 +68,9 @@ pub struct Divergence {
     pub prose: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub magnitude: Option<Magnitude>,
-    /// Human-readable reason for an `Unresolvable` divergence (unsupported file type,
-    /// unreadable file, ambiguous anchor, symbol not found). `None` for clean verdicts.
+    /// Human-readable reason for an `Unresolvable` or `ReferencedStale` divergence (unsupported
+    /// file type, unreadable file, ambiguous anchor, symbol not found, or which referenced hub
+    /// went stale). `None` for clean verdicts.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub detail: Option<String>,
 }
