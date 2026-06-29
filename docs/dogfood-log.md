@@ -6,6 +6,39 @@ did about it, the lesson.* Keep it honest; the failures are the interesting part
 
 ---
 
+## 2026-06-29 — The new claim-log nudges flagged 22 of our own hubs
+
+**Context:** #142 argues the CLI's in-loop signals (`surf suggest`, `lint_under_coverage`) teach
+agents to write *claim-logs* — one claim per function, near-1:1 symbol→claim, no prose — because
+nothing rewarded consolidation. We added the symmetric counter-pressure: a *claim-log* warning
+(several claims, never a multi-site `at:`) and a *thin-prose* warning (multi-claim hub, stub body).
+
+**What happened:** the moment they ran, `surf lint` reported **22 warnings on our own hubs** —
+0 errors, exit 0. Notably *zero* of our 17 hubs had ever used a multi-site `at:` list, and
+`cli-check.md` (the example the issue calls out as too thin) tripped both new warnings. The repo
+that ships the tool was itself the thing the issue describes.
+
+**Why it's a good story:** it's the cleanest possible confirmation of the issue's thesis — the
+authors of Surface, dogfooding daily, still drifted into per-symbol logging because the loop only
+ever nudged toward *more* coverage, never toward *fewer, coarser* claims. The fix isn't "write
+better docs"; it's adding the missing signal. The warnings are advisory (exit 0) by design, so
+they nudge without blocking — but 22 of them is a loud, honest nudge.
+
+**Lesson / open question:** advisory-but-loud is the right register for a stylistic nudge, but
+22 warnings risks being tuned out. Open question: should consolidation be a single per-hub summary
+line rather than one warning per offending hub, and is the multi-site `at:` count the best single
+proxy for "this author thinks in systems, not symbols"?
+
+**Follow-up (same day):** we then ate the dogfood — refactored the 6 flagged hubs in the same PR.
+Adding real body prose to the 5 thin ones was free (bodies aren't hashed, so no re-verify), and
+`cli-git` got the repo's *first* multi-site claim: one invariant ("every git query degrades to
+None; the verdict never depends on it") sealed across all five helpers, which let us trim the
+per-function boilerplate. Writing it surfaced the same thing the AGENTS.md entry did — consolidating
+forced us to name the shared contract explicitly. New-warning count on our hubs: 6 → 0. (The 16
+`under-coverage` warnings are a separate, older itch.)
+
+---
+
 ## 2026-06-17 — Making AGENTS.md a hub caught AGENTS.md lying about itself
 
 **Context:** We documented that `AGENTS.md`/`CLAUDE.md` *can* double as a hub (any file the `hubs`

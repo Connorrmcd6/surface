@@ -27,5 +27,17 @@ refs: []
 
 # Canonical hashing
 
-The fingerprint is computed over `emit`'s token stream, hashed with SHA-256 (12 hex). This is
-the signal the gate compares; `Magnitude` alongside it is advisory only and never gates.
+**The whole design in one line:** quiet on cosmetics, loud on logic. The fingerprint is computed
+over `emit`'s canonical token stream, hashed with SHA-256 (12 hex). This is the only signal the
+gate compares; `Magnitude` alongside it is advisory and never gates.
+
+"Canonical" is what makes the gate trustworthy: comments are dropped and identifiers are
+alpha-renamed to positional placeholders, so a consistent rename or a reflow doesn't trip a claim,
+while operators, keywords, and literal values stay verbatim, so a real logic edit does. The
+exceptions exist because a name *is* the logic there — a Python decorator, and (v2) a
+member-access name — so swapping one is caught even when it occurs once. A claim's hash is the
+order-sensitive combination of its per-site hashes, which is what lets one multi-site claim go
+stale when any of its spans changes.
+
+**Boundary:** hashing decides *that* something changed, never *whether the prose is still true* —
+that judgment is the human's at [`surf verify`](./cli-verify.md).

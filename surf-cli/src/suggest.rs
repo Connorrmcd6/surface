@@ -168,25 +168,60 @@ fn print_human(suggestions: &[Suggestion]) {
         println!("surf suggest: no unanchored public symbols found.");
         return;
     }
+    // These are *undocumented symbols*, not a list of claims to write. The output below groups
+    // them by file and emits one multi-site `at:` skeleton per file, so the default shape models
+    // a good hub — coarse, system-level claims with multi-anchor `at:` lists — rather than the
+    // one-claim-per-function "claim-log" that a flat 1:1 list teaches (#142).
+    let files = group_by_file(suggestions);
     println!(
-        "# {} unanchored public symbol(s). Paste into a hub (or `surf new <name>`), write the",
-        suggestions.len()
+        "# {} undocumented public symbol(s) across {} file(s) — these are SYMBOLS, not claims.",
+        suggestions.len(),
+        files.len()
     );
     println!(
-        "# claims, then `surf verify`. These are suggestions — nothing was written or stamped."
+        "# A hub is an onboarding doc: prose first, with a few COARSE claims. Do NOT write one"
     );
+    println!("# claim per symbol. Group related symbols into a system-level claim and list every");
+    println!(
+        "# site it spans under one `at:` (a claim is stale if any listed span changes). Replace"
+    );
+    println!(
+        "# the skeleton below with real prose, delete what you don't need, then `surf verify`."
+    );
+    println!("# Nothing was written or stamped.");
     println!("---");
-    println!("summary: TODO one-line summary of this domain.");
+    println!(
+        "summary: TODO one line — what this system does and the single most important distinction."
+    );
     println!("anchors:");
-    for s in suggestions {
-        println!(
-            "  - claim: TODO the invariant {} guarantees, in prose",
-            s.symbol
-        );
-        println!("    at: {}", s.at);
+    for (file, ats) in &files {
+        println!("  # {file}: group these into as few claims as the behavior allows.");
+        println!("  - claim: TODO one invariant this group guarantees, in prose");
+        println!("    at:");
+        for at in ats {
+            println!("      - {at}");
+        }
     }
     println!("refs: []");
     println!("---");
+    println!();
+    println!("# TODO title");
+    println!();
+    println!("TODO prose a human or agent reads to onboard: how the pieces fit, the key");
+    println!("distinction, and a Boundary note on what this system does *not* cover.");
+}
+
+/// Group suggestions by their source file, preserving the already-sorted order of both files and
+/// the anchors within each. Returns `(file, [at, ...])` pairs.
+fn group_by_file(suggestions: &[Suggestion]) -> Vec<(String, Vec<String>)> {
+    let mut files: Vec<(String, Vec<String>)> = Vec::new();
+    for s in suggestions {
+        match files.last_mut() {
+            Some((f, ats)) if *f == s.file => ats.push(s.at.clone()),
+            _ => files.push((s.file.clone(), vec![s.at.clone()])),
+        }
+    }
+    files
 }
 
 #[cfg(test)]
@@ -227,6 +262,34 @@ mod tests {
         assert_eq!(s.len(), 1);
         assert_eq!(s[0].at, "src/m.rs > b");
         assert_eq!(s[0].symbol, "b");
+    }
+
+    #[test]
+    fn group_by_file_collapses_adjacent_symbols() {
+        // Two symbols in one file collapse to a single multi-site group; a third file is its own
+        // group — the shape that steers authors toward coarse, multi-anchor claims (#142).
+        let s = vec![
+            Suggestion {
+                file: "a.rs".into(),
+                symbol: "x".into(),
+                at: "a.rs > x".into(),
+            },
+            Suggestion {
+                file: "a.rs".into(),
+                symbol: "y".into(),
+                at: "a.rs > y".into(),
+            },
+            Suggestion {
+                file: "b.rs".into(),
+                symbol: "z".into(),
+                at: "b.rs > z".into(),
+            },
+        ];
+        let g = group_by_file(&s);
+        assert_eq!(g.len(), 2);
+        assert_eq!(g[0].0, "a.rs");
+        assert_eq!(g[0].1, vec!["a.rs > x", "a.rs > y"]);
+        assert_eq!(g[1].1, vec!["b.rs > z"]);
     }
 
     #[test]

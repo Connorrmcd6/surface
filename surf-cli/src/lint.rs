@@ -2,7 +2,8 @@
 //! vanished anchors block; a symbol that was merely renamed (detected via stored-hash
 //! match, §6.4) only warns and points at `surf verify --follow`. It also emits advisory
 //! granularity warnings (§8): anchors that span (nearly) a whole file, hubs with too many
-//! anchors, and exported symbols in an anchored file that no claim covers.
+//! anchors, exported symbols in an anchored file that no claim covers, and the symmetric
+//! consolidation nudges (#142) — a per-symbol "claim-log" and a thin-prose body.
 
 use crate::format::Format;
 use crate::workspace::Workspace;
@@ -21,6 +22,12 @@ const COARSE_SPAN_FRACTION_PCT: usize = 75;
 const COARSE_MIN_FILE_LINES: usize = 15;
 /// Past this many anchors a hub invites rubber-stamping during a bulk `verify` (§8).
 const MAX_ANCHORS_PER_HUB: usize = 12;
+/// At or above this many claims, a hub that never once uses a multi-site `at:` list reads as a
+/// per-symbol "claim-log" rather than a system briefing — nudge toward consolidation (#142).
+const CLAIM_LOG_MIN_CLAIMS: usize = 4;
+/// An onboarding hub should average at least this many words of *body* prose per claim. Below it,
+/// the prose lives in the frontmatter and the body is a stub — flag thin-prose (#142).
+const MIN_PROSE_WORDS_PER_CLAIM: usize = 15;
 
 #[derive(Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -146,6 +153,8 @@ fn lint_workspace(ws: &Workspace) -> Result<Vec<Finding>> {
         }
 
         lint_covers(&rel, &hub, &mut findings);
+        lint_claim_log(&rel, &hub, &mut findings);
+        lint_thin_prose(&rel, &hub, &mut findings);
 
         if hub.frontmatter.anchors.len() > MAX_ANCHORS_PER_HUB {
             findings.push(Finding {
@@ -428,6 +437,69 @@ fn lint_coarse_span(
     }
 }
 
+/// §8/#142: the counter-pressure to under-coverage. A hub is an onboarding doc — prose-first,
+/// with coarse claims that each seal one behavior across the several places it lives (a multi-site
+/// `at:` list). When a hub accumulates many claims and *never once* consolidates with a multi-site
+/// `at:`, it reads as a per-symbol "claim-log"; nudge toward fewer, multi-anchor claims. Advisory.
+fn lint_claim_log(rel: &str, hub: &surf_core::Hub, findings: &mut Vec<Finding>) {
+    let claims = &hub.frontmatter.anchors;
+    if claims.len() < CLAIM_LOG_MIN_CLAIMS {
+        return;
+    }
+    let multi_site = claims.iter().filter(|c| c.at.sites().len() > 1).count();
+    if multi_site == 0 {
+        findings.push(Finding {
+            severity: Severity::Warn,
+            hub: rel.to_string(),
+            claim: String::new(),
+            at: String::new(),
+            message: format!(
+                "{} claims, all single-site — this reads as a per-symbol claim-log. A hub documents a system: consolidate related claims into fewer coarse ones, each listing every site it spans under one multi-site `at:`",
+                claims.len()
+            ),
+        });
+    }
+}
+
+/// §8/#142: a hub is an onboarding doc, not a frontmatter dump. Flag a multi-claim hub whose body
+/// prose is too thin to onboard a reader — when the prose lives in the `claim:` fields and the
+/// readable body is a stub. Advisory; single-claim hubs (short module notes) are exempt.
+fn lint_thin_prose(rel: &str, hub: &surf_core::Hub, findings: &mut Vec<Finding>) {
+    let claims = hub.frontmatter.anchors.len();
+    if claims < 2 {
+        return;
+    }
+    let words = prose_words(&hub.body);
+    if words < MIN_PROSE_WORDS_PER_CLAIM * claims {
+        findings.push(Finding {
+            severity: Severity::Warn,
+            hub: rel.to_string(),
+            claim: String::new(),
+            at: String::new(),
+            message: format!(
+                "thin prose: {words} words of body for {claims} claims — a hub is an onboarding doc, not a list of claims. Add prose framing the system (the key distinction, how the pieces fit, what it does *not* cover)"
+            ),
+        });
+    }
+}
+
+/// Words of readable body prose, excluding fenced code blocks (``` … ```), which carry no
+/// onboarding prose and would otherwise inflate the count.
+fn prose_words(body: &str) -> usize {
+    let mut count = 0;
+    let mut in_fence = false;
+    for line in body.lines() {
+        if line.trim_start().starts_with("```") {
+            in_fence = !in_fence;
+            continue;
+        }
+        if !in_fence {
+            count += line.split_whitespace().count();
+        }
+    }
+    count
+}
+
 fn lint_under_coverage(
     ws: &Workspace,
     hub: &str,
@@ -696,6 +768,90 @@ mod tests {
             f.iter()
                 .any(|x| x.severity == Severity::Warn && x.message.contains("anchors in one hub")),
             "expected a too-many-anchors warning, got {f:?}"
+        );
+    }
+
+    #[test]
+    fn claim_log_warns_on_many_single_site_claims() {
+        // Four claims, each anchoring a single symbol, no multi-site `at:` — the per-symbol
+        // claim-log smell. A rich body keeps thin-prose quiet so only the granularity warning fires.
+        let mut src = String::new();
+        let mut anchors = String::new();
+        for i in 0..CLAIM_LOG_MIN_CLAIMS {
+            src.push_str(&format!("pub fn f{i}() {{}}\n"));
+            anchors.push_str(&format!("  - claim: c{i}\n    at: src/m.rs > f{i}\n"));
+        }
+        let body: String = "prose ".repeat(200);
+        let hub = format!("---\nsummary: x\nanchors:\n{anchors}---\n# H\n\n{body}\n");
+        let (_t, ws) = ws_with(&[("src/m.rs", src.as_str()), ("hubs/a.md", hub.as_str())]);
+
+        let f = lint_workspace(&ws).unwrap();
+        let warn = f
+            .iter()
+            .find(|x| x.message.contains("claim-log"))
+            .expect("expected a claim-log warning");
+        assert_eq!(warn.severity, Severity::Warn);
+    }
+
+    #[test]
+    fn claim_log_silent_when_a_claim_consolidates() {
+        // Same claim count, but one claim uses a multi-site `at:` — the hub consolidates, so the
+        // claim-log nudge stays quiet.
+        let mut src = String::new();
+        for i in 0..CLAIM_LOG_MIN_CLAIMS {
+            src.push_str(&format!("pub fn f{i}() {{}}\n"));
+        }
+        let mut anchors = String::from(
+            "  - claim: pair\n    at:\n      - src/m.rs > f0\n      - src/m.rs > f1\n",
+        );
+        for i in 2..CLAIM_LOG_MIN_CLAIMS {
+            anchors.push_str(&format!("  - claim: c{i}\n    at: src/m.rs > f{i}\n"));
+        }
+        let body: String = "prose ".repeat(200);
+        let hub = format!("---\nsummary: x\nanchors:\n{anchors}---\n# H\n\n{body}\n");
+        let (_t, ws) = ws_with(&[("src/m.rs", src.as_str()), ("hubs/a.md", hub.as_str())]);
+
+        let f = lint_workspace(&ws).unwrap();
+        assert!(
+            !f.iter().any(|x| x.message.contains("claim-log")),
+            "consolidated hub should not warn: {f:?}"
+        );
+    }
+
+    #[test]
+    fn thin_prose_warns_on_stub_body() {
+        // Two claims, near-empty body — an onboarding doc with no onboarding prose.
+        let (_t, ws) = ws_with(&[
+            ("src/m.rs", "pub fn a() {}\npub fn b() {}\n"),
+            (
+                "hubs/a.md",
+                "---\nsummary: x\nanchors:\n  - claim: a does a\n    at: src/m.rs > a\n  - claim: b does b\n    at: src/m.rs > b\n---\n# H\n",
+            ),
+        ]);
+        let f = lint_workspace(&ws).unwrap();
+        let warn = f
+            .iter()
+            .find(|x| x.message.contains("thin prose"))
+            .expect("expected a thin-prose warning");
+        assert_eq!(warn.severity, Severity::Warn);
+    }
+
+    #[test]
+    fn thin_prose_silent_with_real_body() {
+        // Two claims plus a real body — the onboarding prose a hub should carry; no warning. A
+        // fenced code block doesn't count toward prose, so the words are genuine.
+        let body: String = "word ".repeat(40);
+        let hub = format!(
+            "---\nsummary: x\nanchors:\n  - claim: a\n    at: src/m.rs > a\n  - claim: b\n    at: src/m.rs > b\n---\n# H\n\n{body}\n"
+        );
+        let (_t, ws) = ws_with(&[
+            ("src/m.rs", "pub fn a() {}\npub fn b() {}\n"),
+            ("hubs/a.md", hub.as_str()),
+        ]);
+        let f = lint_workspace(&ws).unwrap();
+        assert!(
+            !f.iter().any(|x| x.message.contains("thin prose")),
+            "a hub with a real body should not warn: {f:?}"
         );
     }
 

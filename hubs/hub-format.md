@@ -19,5 +19,16 @@ covers:
 
 # Hub format
 
-`parse_hub` is the contract everything binds to. Writes go through the line-level editor
-(`set_anchor_hash` / `set_anchor_at`) rather than re-serializing, to keep diffs reviewable.
+A hub is the unit every command reads and writes: a `---`-fenced YAML frontmatter block (the
+machine-checkable `anchors`) followed by a markdown body (the prose a human or agent reads).
+`parse_hub` is the contract everything else binds to — its shape is why `at:` can be a scalar or a
+list, why `hash` is optional until verified, and why unknown fields are rejected (so a typo can't
+masquerade as a new field) while the forward-declared `refs`/`covers` are accepted but inert.
+
+**The distinction that drives the design:** a human reviews every write, so edits must be
+*surgical*. Writes go through the line-level editor (`set_anchor_hash` / `set_anchor_at`) rather
+than re-serializing the frontmatter — re-serializing would reorder keys and reflow scalars, burying
+the one changed line in a noisy diff. An unchanged hash rewrite is therefore byte-identical.
+
+**Boundary:** this module is pure parsing and text editing — it resolves no anchors and computes no
+hashes; it only produces the structure [`lint`](./cli-lint.md)/[`check`](./cli-check.md) act on.
