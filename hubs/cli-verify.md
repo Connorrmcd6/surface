@@ -10,7 +10,7 @@ anchors:
       path (only when the code is otherwise unchanged under the stored recipe). Otherwise it skips
       with a reason. It never edits prose, only the hash/at line.
     at: surf-cli/src/verify.rs > plan_claim
-    hash: 2:cc47fe88418b
+    hash: 2:18df2a40dd9d
 refs: []
 ---
 
