@@ -42,10 +42,25 @@ fn template(name: &str) -> String {
     s.push_str("refs: []\n");
     s.push_str("---\n\n");
     s.push_str(&format!("# {name}\n\n"));
-    s.push_str("TODO: prose. Add anchors in the frontmatter above, e.g.\n\n");
+    s.push_str(
+        "TODO: prose first. A hub is an onboarding doc — frame the system, not each symbol.\n",
+    );
+    s.push_str("Lead with the single most important distinction a reader needs.\n\n");
+    s.push_str("## How it works\n\n");
+    s.push_str("TODO: how the pieces fit together.\n\n");
+    s.push_str("## Boundary\n\n");
+    s.push_str("TODO: what this system does *not* cover.\n\n");
+    s.push_str(
+        "Then add coarse claims in the frontmatter above. Prefer one claim per *behavior*,\n",
+    );
+    s.push_str(
+        "listing every site it spans under one multi-site `at:` — not one claim per symbol:\n\n",
+    );
     s.push_str("    anchors:\n");
-    s.push_str("      - claim: the invariant, in prose\n");
-    s.push_str("        at: path/to/file.rs > symbolName\n\n");
+    s.push_str("      - claim: the invariant this behavior guarantees, in prose\n");
+    s.push_str("        at:\n");
+    s.push_str("          - path/to/file.rs > symbolName\n");
+    s.push_str("          - path/to/other.rs > relatedSymbol\n\n");
     s.push_str("then run `surf verify` to stamp the hash.\n");
     s
 }

@@ -57,9 +57,12 @@ Run the loop (binary builds to `target/debug/surf`; see `CONTRIBUTING.md` for bu
 3. `surf check` — if you touched code a hub anchors, it will report `DIVERGED`. Re-read the
    claim. If the prose **still holds**, `surf verify` re-seals it (writes the new hash); if the
    prose is **now false**, fix the prose first, then verify.
-4. Added public behavior? Add a hub claim for it — the under-coverage warning flags public
-   functions with no claim. When you update a hub, update its *prose* to stay accurate, not just
-   the hash.
+4. Added public behavior? First reach for an *existing* system claim: extend its prose, or add
+   the new symbol as another site under its multi-site `at:` list. Write a brand-new claim only
+   when the behavior is genuinely its own. A hub is an onboarding doc, not a per-function log —
+   the under-coverage warning lists undocumented symbols, but consolidating them into one coarse,
+   multi-anchor claim beats one claim per function (`surf lint` will nudge a claim-log the other
+   way). When you update a hub, update its *prose* to stay accurate, not just the hash.
 5. Record user-facing changes in [`CHANGELOG.md`](./CHANGELOG.md) under `[Unreleased]`.
 6. Hit a *notable* dogfooding moment? Log it in [`docs/dogfood-log.md`](./docs/dogfood-log.md).
    This is the repo eating its own dogfood, so it produces good material — capture it while it's

@@ -32,7 +32,15 @@ refs: []
 
 # surf check
 
-`check_claim` is the verdict; the git helpers in [`cli-git.md`](./cli-git.md) only feed the
-advisory `old_code`/`magnitude` in the `--format json` report. Any divergence makes `run` exit
-non-zero (the CI-blocking signal). `Scope` narrows which claims `check_workspace` evaluates when
-`--base`/`--files` are given.
+`check` is the gate — the one command CI runs. **The distinction to hold onto:** the verdict is
+*purely a function of anchored code and stored hashes*. It reads no git, so the same tree always
+produces the same answer; the git helpers in [`cli-git.md`](./cli-git.md) only feed the advisory
+`old_code`/`magnitude` in the `--format json` report and never change pass/fail.
+
+`check_claim` is the per-claim verdict; `check_workspace` walks every hub, and `Scope` narrows
+which claims it evaluates when `--base` or `--files` is given — opt-in and intersective, falling
+back to a full check rather than checking nothing. Any divergence (including a hub whose
+frontmatter won't parse — the gate fails closed) makes `run` exit non-zero.
+
+**Boundary:** green means "nothing anchored changed since last sign-off," not "the prose is true";
+that confirmation is [`surf verify`](./cli-verify.md)'s job, not the gate's.

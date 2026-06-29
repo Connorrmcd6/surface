@@ -7,7 +7,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`surf lint` consolidation nudges (#142).** Two advisory warnings push hubs away from the
+  "claim-log" shape (one claim per function) and toward onboarding docs: a *claim-log* warning
+  when a hub has several claims and never once uses a multi-site `at:` list, and a *thin-prose*
+  warning when a multi-claim hub's body is too sparse to onboard a reader. Both are non-blocking
+  (exit 0), mirroring the existing over-/under-anchoring nudges.
+
 ### Changed
+- **`surf suggest` reframed (#142).** Human output now reads as a list of *undocumented symbols*,
+  not a list of claims to write: it groups symbols by file and emits a multi-site `at:` skeleton
+  with prose-first scaffolding, steering authors toward coarse, system-level claims. `--format
+  json` is unchanged.
+- **`surf new` scaffold** ships a prose-first template (`## How it works` / `## Boundary`
+  headings and a multi-anchor example claim) so a fresh hub is shaped like an onboarding doc.
 - **Hash recipe v2 (member-access names verbatim).** The canonical hash now keeps the
   property/field component of a member-access expression verbatim instead of alpha-renaming it,
   so re-pointing an anchored span at a *different* external symbol — `PointsTier.TIER_1` →
