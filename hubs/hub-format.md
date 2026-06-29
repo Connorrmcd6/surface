@@ -3,8 +3,9 @@ summary: The hub document format and the minimal-diff frontmatter editor used by
 anchors:
   - claim: >
       A hub is a `---`-fenced YAML frontmatter block followed by a markdown body; `at:` is a
-      scalar or a list, hash is optional until verified, and unknown fields are rejected — though
-      forward-declared fields (`refs`, `covers`) are accepted and stored but inert in the verdict.
+      scalar or a list, hash is optional until verified, and unknown fields are rejected — while
+      `refs`/`covers` are accepted and stored verbatim, parse_hub resolving neither (acting on them
+      is lint/check's job).
     at: surf-core/src/hub.rs > parse_hub
     hash: 2:c510c6032ba7
   - claim: >
@@ -25,8 +26,8 @@ A hub is the unit every command reads and writes: a `---`-fenced YAML frontmatte
 machine-checkable `anchors`) followed by a markdown body (the prose a human or agent reads).
 `parse_hub` is the contract everything else binds to — its shape is why `at:` can be a scalar or a
 list, why `hash` is optional until verified, and why unknown fields are rejected (so a typo can't
-masquerade as a new field) while `refs`/`covers` are accepted and lint-validated but never gate the
-`check` verdict.
+masquerade as a new field) while `refs`/`covers` are accepted and lint-validated — `covers` never
+gates, but a stale `refs` target now propagates into the [`check`](./cli-check.md) verdict (#4).
 
 **The distinction that drives the design:** a human reviews every write, so edits must be
 *surgical*. Writes go through the line-level editor (`set_anchor_hash` / `set_anchor_at`) rather

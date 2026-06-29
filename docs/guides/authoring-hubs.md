@@ -32,9 +32,10 @@ Prose a human (or agent) reads to understand this domain.
 - **`refs`** — hub composition: paths to *other hubs* this one builds on, written relative to this
   hub (`./resolve.md`), optionally `> symbol` to point at one claim within the target
   (`./resolve.md > resolve_nodes`, matched against that claim's `at:` anchor). `surf lint` blocks a
-  ref that doesn't resolve to a hub, points at this hub, or names a claim the target lacks — so a
-  typo can't rot silently. The `check` *verdict* doesn't read `refs` yet (a referenced hub going
-  stale won't flag this one); refs are a validated navigation graph for now.
+  ref that doesn't resolve to a hub, points at this hub, or names a claim the target lacks. The
+  `check` gate also **propagates staleness one hop**: when a hub you `ref` has an open divergence,
+  this hub fails too (a `referenced_stale` divergence) — review the dependency and re-verify. Only
+  *direct* refs propagate; a chain `A → B → C` stops at one hop.
 - **`covers`** — advisory file-scope globs; parsed and lint-validated but never affects
   `surf check`. Leave it empty unless you have a reason — the feature that consumes it isn't
   shipped.

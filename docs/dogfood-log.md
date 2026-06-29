@@ -6,6 +6,48 @@ did about it, the lesson.* Keep it honest; the failures are the interesting part
 
 ---
 
+## 2026-06-29 — `refs` propagation fired first on the commit that created it
+
+**Context:** PR2 of `refs` hub composition (#4) turns on staleness *propagation*: `surf check`
+now flags a hub when a hub it `refs` has an open divergence (one-hop). The change lives in
+`check_workspace` — which is itself an anchored claim in `cli-check.md`, and `cli-check.md` is
+referenced by `cli-workspace.md` and `hub-format.md`.
+
+**What happened:** the first `surf check` after wiring up propagation went red three ways:
+
+```
+DIVERGED  hubs/cli-check.md :: surf-cli/src/check.rs > check_workspace
+    stored 2:4f5890aca70c → now 2:b7b7fd55206e  (magnitude: Large)
+REF-STALE  hubs/cli-workspace.md :: ./cli-check.md
+    referenced hub `hubs/cli-check.md` has an open divergence — review it, then re-verify
+REF-STALE  hubs/hub-format.md :: ./cli-check.md
+    referenced hub `hubs/cli-check.md` has an open divergence — review it, then re-verify
+surf check: 3 divergence(s).
+```
+
+The new feature's *first real firing* was on the very diff that introduced it: editing
+`check_workspace` diverged its own claim, and propagation — the thing being added — immediately
+walked the two hubs that compose it and flagged them too. Fixing the root cleared all three at
+once: I updated the `check_workspace` claim prose to describe propagation, re-sealed it
+(`surf verify "surf-cli/src/check.rs > check_workspace"`), and both inherited `REF-STALE`s
+vanished with it.
+
+**Why it's a good story:** the composition graph proved itself end-to-end without a contrived
+example. It also makes the §8/§11.3 risk concrete: one genuine divergence amplified into three
+findings (1 root + 2 inherited). That's the cascade the proposal worried about — but the shape
+held up: the inherited flags are clearly labelled, point at the root, and clear the instant the
+root is re-sealed. One-hop did its job too — `cli-check` itself `refs` `cli-git`/`cli-verify`,
+which were clean, so nothing spread further, and the two `REF-STALE` hubs didn't re-propagate
+onto *their* referrers (propagation is built only from base divergences).
+
+**Lesson / open question:** "fix the root, the inherited flags clear" is the property that makes
+propagation usable rather than noisy — but it relies on the author recognising a `REF-STALE` as
+*derived*, not a second thing to fix. Open question: at scale, is a 1→N amplification per stale
+hub still legible, or does `check` eventually want to *group* inherited flags under their root
+(print the root divergence, then "and N hubs that ref it") rather than as N peer lines?
+
+---
+
 ## 2026-06-29 — The new claim-log nudges flagged 22 of our own hubs
 
 **Context:** #142 argues the CLI's in-loop signals (`surf suggest`, `lint_under_coverage`) teach
