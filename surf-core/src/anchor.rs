@@ -144,4 +144,40 @@ mod tests {
         );
         assert_eq!(parse_anchor("> rotate"), Err(AnchorParseError::EmptyFile));
     }
+
+    // --- Path edge cases (#45) ----------------------------------------------
+    //
+    // The grammar (§6.3) mandates forward slashes in the file path. These pin the *current*
+    // behaviour: backslash / mixed-separator paths are accepted verbatim and the backslash is
+    // retained in `Anchor::file`, so the file later fails to match on disk — a silent non-match
+    // rather than a clear parse error.
+
+    #[test]
+    fn backslash_path_is_currently_accepted_verbatim() {
+        let a = parse_anchor("auth\\service.ts > Foo").unwrap();
+        assert_eq!(a.file, "auth\\service.ts");
+        assert_eq!(a.segments, vec![seg("Foo", None)]);
+    }
+
+    #[test]
+    fn mixed_separator_path_is_currently_accepted_verbatim() {
+        let a = parse_anchor("src\\auth.py > rotate").unwrap();
+        assert_eq!(a.file, "src\\auth.py");
+        assert_eq!(a.segments, vec![seg("rotate", None)]);
+    }
+
+    // Target behaviour for the follow-up (#144): a backslash in the file path is a clear parse
+    // error (a dedicated variant, e.g. `BadSeparator`), not a silently-retained separator. Flip
+    // these to assert on the new variant and drop the `#[ignore]` when the fix lands.
+    #[test]
+    #[ignore = "#144: backslash paths should error with a dedicated variant, not parse Ok"]
+    fn backslash_path_should_be_a_parse_error() {
+        assert!(parse_anchor("auth\\service.ts > Foo").is_err());
+    }
+
+    #[test]
+    #[ignore = "#144: mixed-separator paths should error with a dedicated variant, not parse Ok"]
+    fn mixed_separator_path_should_be_a_parse_error() {
+        assert!(parse_anchor("src\\auth.py > rotate").is_err());
+    }
 }

@@ -95,6 +95,59 @@ fn golden_hashes_are_stable_per_language() {
 }
 
 #[test]
+fn golden_unicode_identifier_hashes_are_stable() {
+    // Non-ASCII symbol names and bodies across the four families (#45). Pinning these as goldens
+    // turns any future locale/encoding sensitivity in canonicalization into a loud diff. Each
+    // snippet carries a comment + non-canonical whitespace, so it also re-asserts the
+    // "comments + formatting ignored" guarantee for Unicode source. All are member-access-free,
+    // so v1 and v2 agree byte-for-byte.
+    let rust = "pub fn café(δ: i64) -> i64 {\n    // accent\n    δ\n}\n";
+    assert_eq!(
+        raw(rust, Lang::Rust, "x.rs > café", Recipe::V1),
+        "9c1a869d1c60"
+    );
+    assert_eq!(
+        raw(rust, Lang::Rust, "x.rs > café", Recipe::V2),
+        "9c1a869d1c60"
+    );
+
+    let ts = "export function café(δ: string): string {\n  return δ; // u\n}\n";
+    assert_eq!(
+        raw(ts, Lang::TypeScript, "x.ts > café", Recipe::V1),
+        "f7607eacbd73"
+    );
+    assert_eq!(
+        raw(ts, Lang::TypeScript, "x.ts > café", Recipe::V2),
+        "f7607eacbd73"
+    );
+
+    let py = "def café(δ):\n    # accent\n    return δ\n";
+    assert_eq!(
+        raw(py, Lang::Python, "x.py > café", Recipe::V1),
+        "bc2439d5f488"
+    );
+    assert_eq!(
+        raw(py, Lang::Python, "x.py > café", Recipe::V2),
+        "bc2439d5f488"
+    );
+
+    let go = "func Café(δ int) int {\n\t// u\n\treturn δ\n}\n";
+    assert_eq!(raw(go, Lang::Go, "x.go > Café", Recipe::V1), "9a101a4d062f");
+    assert_eq!(raw(go, Lang::Go, "x.go > Café", Recipe::V2), "9a101a4d062f");
+}
+
+#[test]
+fn unicode_identifier_hashes_are_recomputation_stable() {
+    // Re-running the same hash yields the same value — the determinism half of the guarantee,
+    // independent of the pinned goldens above.
+    let py = "def café(δ):\n    # accent\n    return δ\n";
+    assert_eq!(
+        raw(py, Lang::Python, "x.py > café", Recipe::V2),
+        raw(py, Lang::Python, "x.py > café", Recipe::V2)
+    );
+}
+
+#[test]
 fn golden_member_access_hashes_differ_by_recipe() {
     // Symbols whose only interesting content is a member access: v1 and v2 diverge, and both
     // digests are pinned so a grammar bump or canonicalization refactor that perturbs either
