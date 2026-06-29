@@ -63,27 +63,7 @@ pub fn parse_anchor(input: &str) -> Result<Anchor, AnchorParseError> {
 
     let mut segments = Vec::new();
     for raw in parts {
-        let seg = raw.trim();
-        if seg.is_empty() {
-            return Err(AnchorParseError::EmptySegment);
-        }
-        let (name, index) = match seg.split_once('@') {
-            Some((name, idx)) => {
-                let idx = idx.trim();
-                let parsed = idx
-                    .parse::<usize>()
-                    .map_err(|_| AnchorParseError::BadIndex(idx.to_string()))?;
-                if parsed == 0 {
-                    return Err(AnchorParseError::BadIndex(idx.to_string()));
-                }
-                (name.trim().to_string(), Some(parsed))
-            }
-            None => (seg.to_string(), None),
-        };
-        if name.is_empty() {
-            return Err(AnchorParseError::EmptySegment);
-        }
-        segments.push(Segment { name, index });
+        segments.push(parse_segment(raw)?);
     }
 
     if segments.is_empty() {
@@ -91,6 +71,32 @@ pub fn parse_anchor(input: &str) -> Result<Anchor, AnchorParseError> {
     }
 
     Ok(Anchor { file, segments })
+}
+
+/// Parse one `>`-delimited segment (`name` or `name@N`). Shared by `at:` anchors and `refs:`
+/// (#4), so the positional-collision grammar stays identical across both.
+pub(crate) fn parse_segment(raw: &str) -> Result<Segment, AnchorParseError> {
+    let seg = raw.trim();
+    if seg.is_empty() {
+        return Err(AnchorParseError::EmptySegment);
+    }
+    let (name, index) = match seg.split_once('@') {
+        Some((name, idx)) => {
+            let idx = idx.trim();
+            let parsed = idx
+                .parse::<usize>()
+                .map_err(|_| AnchorParseError::BadIndex(idx.to_string()))?;
+            if parsed == 0 {
+                return Err(AnchorParseError::BadIndex(idx.to_string()));
+            }
+            (name.trim().to_string(), Some(parsed))
+        }
+        None => (seg.to_string(), None),
+    };
+    if name.is_empty() {
+        return Err(AnchorParseError::EmptySegment);
+    }
+    Ok(Segment { name, index })
 }
 
 #[cfg(test)]

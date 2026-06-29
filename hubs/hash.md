@@ -35,7 +35,8 @@ anchors:
       multiple sites combine order-sensitively, so the claim is stale if any listed span changes.
     at: surf-core/src/hash.rs > combine_site_hashes
     hash: 2:cbbbbc3b2237
-refs: []
+refs:
+  - ./cli-verify.md
 ---
 
 # Canonical hashing

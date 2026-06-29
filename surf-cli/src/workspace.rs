@@ -3,7 +3,7 @@
 //! This is the I/O layer that `surf-core`'s pure parsers feed into.
 
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use surf_core::config::{parse_config, Config, CONFIG_FILE};
 use surf_core::{parse_anchor, parse_hub, Anchor, Hub, HubError, Lang};
 
@@ -74,6 +74,26 @@ impl Workspace {
         }
         Ok(out)
     }
+}
+
+/// Normalize a `refs:` path (written relative to the referencing hub, per #4) to a
+/// workspace-relative path, so it can be matched against `LoadedHub::rel`. `.`/`..` are
+/// resolved by component arithmetic — no filesystem access — and the result uses `/` to match
+/// the forward-slash rels `iter_hubs` produces.
+pub fn resolve_ref_path(referencing_rel: &str, ref_path: &str) -> String {
+    let mut stack: Vec<String> = Vec::new();
+    let base = Path::new(referencing_rel).parent().unwrap_or(Path::new(""));
+    for comp in base.components().chain(Path::new(ref_path).components()) {
+        match comp {
+            Component::CurDir => {}
+            Component::ParentDir => {
+                stack.pop();
+            }
+            Component::Normal(c) => stack.push(c.to_string_lossy().into_owned()),
+            Component::RootDir | Component::Prefix(_) => {}
+        }
+    }
+    stack.join("/")
 }
 
 /// Why a single `at:` site couldn't be loaded for hashing/resolution. Distinct variants so

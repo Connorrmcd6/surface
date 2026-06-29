@@ -20,7 +20,7 @@ anchors:
       silent zero or a quietly-narrowed hub set.
     at: surf-cli/src/stats.rs > compute
     hash: 2:1422981eb9fa
-refs: ["../docs/guides/stats.md"]
+refs: []
 ---
 
 # surf stats

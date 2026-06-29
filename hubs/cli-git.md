@@ -32,7 +32,8 @@ anchors:
       Best-effort: a pure mv with no content match may show as delete+add and go undetected.
     at: surf-cli/src/git.rs > renamed_to
     hash: 2:260267073598
-refs: []
+refs:
+  - ./rename.md
 ---
 
 # git helpers
