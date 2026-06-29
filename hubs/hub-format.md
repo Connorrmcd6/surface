@@ -12,7 +12,9 @@ anchors:
       replaces/inserts only its hash line, so an unchanged hash is byte-identical.
     at: surf-core/src/hub.rs > set_anchor_hash
     hash: 2:29805baa85ea
-refs: []
+refs:
+  - ./cli-lint.md
+  - ./cli-check.md
 covers:
   - surf-core/src/hub.rs
 ---
@@ -23,7 +25,8 @@ A hub is the unit every command reads and writes: a `---`-fenced YAML frontmatte
 machine-checkable `anchors`) followed by a markdown body (the prose a human or agent reads).
 `parse_hub` is the contract everything else binds to — its shape is why `at:` can be a scalar or a
 list, why `hash` is optional until verified, and why unknown fields are rejected (so a typo can't
-masquerade as a new field) while the forward-declared `refs`/`covers` are accepted but inert.
+masquerade as a new field) while `refs`/`covers` are accepted and lint-validated but never gate the
+`check` verdict.
 
 **The distinction that drives the design:** a human reviews every write, so edits must be
 *surgical*. Writes go through the line-level editor (`set_anchor_hash` / `set_anchor_at`) rather

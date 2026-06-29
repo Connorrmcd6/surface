@@ -29,9 +29,14 @@ Prose a human (or agent) reads to understand this domain.
 - **`at`** — the anchor: where the claim's logic lives (grammar below).
 - **`hash`** — the seal. Absent until you `surf verify`; the gate treats a hashless claim as
   *unverified*.
-- **`refs` / `covers`** — forward-declared and currently inert. `refs` (hub composition) is parsed
-  but unused; `covers` (advisory file-scope globs) is parsed and lint-validated but never affects
-  `surf check`. Leave them empty unless you have a reason — the features that consume them aren't
+- **`refs`** — hub composition: paths to *other hubs* this one builds on, written relative to this
+  hub (`./resolve.md`), optionally `> symbol` to point at one claim within the target
+  (`./resolve.md > resolve_nodes`, matched against that claim's `at:` anchor). `surf lint` blocks a
+  ref that doesn't resolve to a hub, points at this hub, or names a claim the target lacks — so a
+  typo can't rot silently. The `check` *verdict* doesn't read `refs` yet (a referenced hub going
+  stale won't flag this one); refs are a validated navigation graph for now.
+- **`covers`** — advisory file-scope globs; parsed and lint-validated but never affects
+  `surf check`. Leave it empty unless you have a reason — the feature that consumes it isn't
   shipped.
 
 Where hubs live is configured by the `hubs` glob in `surf.toml` (default `hubs/*.md`); keep them

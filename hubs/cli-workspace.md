@@ -11,7 +11,10 @@ anchors:
       deduped.
     at: surf-cli/src/workspace.rs > Workspace > hub_paths
     hash: 2:c69c8264bcfd
-refs: []
+refs:
+  - ./cli-check.md
+  - ./cli-lint.md
+  - ./config.md
 ---
 
 # Workspace

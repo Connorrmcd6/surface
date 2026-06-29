@@ -27,7 +27,9 @@ anchors:
       clean anchors still stamped under v1, so run can nudge the one-time `surf verify` upgrade.
     at: surf-cli/src/check.rs > check_workspace
     hash: 2:4f5890aca70c
-refs: []
+refs:
+  - ./cli-git.md
+  - ./cli-verify.md
 ---
 
 # surf check

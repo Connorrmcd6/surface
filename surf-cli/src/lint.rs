@@ -105,14 +105,23 @@ fn lint_workspace(ws: &Workspace) -> Result<Vec<Finding>> {
     let mut unhealthy: HashSet<String> = HashSet::new();
     let mut owner: HashMap<String, String> = HashMap::new();
 
-    for loaded in ws.iter_hubs()? {
-        let rel = loaded.rel;
-        let hub = match loaded.hub {
+    // `refs` validation needs every other hub on hand, so load once and index the well-formed
+    // hubs by rel. A malformed hub is absent from the index (it gets its own block below), so a
+    // ref into it reads as "does not resolve to a hub" — which it effectively doesn't.
+    let loaded = ws.iter_hubs()?;
+    let hub_index: HashMap<&str, &surf_core::Hub> = loaded
+        .iter()
+        .filter_map(|l| l.hub.as_ref().ok().map(|h| (l.rel.as_str(), h)))
+        .collect();
+
+    for loaded_hub in &loaded {
+        let rel = loaded_hub.rel.as_str();
+        let hub = match &loaded_hub.hub {
             Ok(hub) => hub,
             Err(e) => {
                 findings.push(Finding {
                     severity: Severity::Block,
-                    hub: rel,
+                    hub: rel.to_string(),
                     claim: String::new(),
                     at: String::new(),
                     message: format!("invalid hub: {e}"),
@@ -125,7 +134,7 @@ fn lint_workspace(ws: &Workspace) -> Result<Vec<Finding>> {
             for site in claim.at.sites() {
                 let outcome = lint_site(
                     ws,
-                    &rel,
+                    rel,
                     &claim.claim,
                     site,
                     claim.hash.as_deref(),
@@ -138,11 +147,11 @@ fn lint_workspace(ws: &Workspace) -> Result<Vec<Finding>> {
                     owner
                         .entry(info.file.clone())
                         .and_modify(|h| {
-                            if rel < *h {
-                                *h = rel.clone();
+                            if rel < h.as_str() {
+                                *h = rel.to_string();
                             }
                         })
-                        .or_insert_with(|| rel.clone());
+                        .or_insert_with(|| rel.to_string());
                     if info.resolved {
                         covered.entry(info.file).or_default().insert(info.segments);
                     } else {
@@ -152,14 +161,15 @@ fn lint_workspace(ws: &Workspace) -> Result<Vec<Finding>> {
             }
         }
 
-        lint_covers(&rel, &hub, &mut findings);
-        lint_claim_log(&rel, &hub, &mut findings);
-        lint_thin_prose(&rel, &hub, &mut findings);
+        lint_covers(rel, hub, &mut findings);
+        lint_refs(rel, hub, &hub_index, &mut findings);
+        lint_claim_log(rel, hub, &mut findings);
+        lint_thin_prose(rel, hub, &mut findings);
 
         if hub.frontmatter.anchors.len() > MAX_ANCHORS_PER_HUB {
             findings.push(Finding {
                 severity: Severity::Warn,
-                hub: rel.clone(),
+                hub: rel.to_string(),
                 claim: String::new(),
                 at: String::new(),
                 message: format!(
@@ -278,6 +288,69 @@ fn lint_covers(rel: &str, hub: &surf_core::Hub, findings: &mut Vec<Finding>) {
                     "anchored file `{file}` is not matched by any `covers` glob — check the globs cover this hub's own anchors"
                 ),
             });
+        }
+    }
+}
+
+/// Validate a hub's `refs` composition (§9.3, #4). Each entry names another hub by a path
+/// relative to this one, optionally `> segment` to address a claim within it. A ref that doesn't
+/// resolve to a loaded hub, points at its own hub, or names a claim no anchor in the target
+/// matches is a structural error and blocks — the same fail-on-typo reasoning as `covers`. The
+/// verdict does not read `refs` yet (PR2), so lint is the only thing that acts on them.
+fn lint_refs(
+    rel: &str,
+    hub: &surf_core::Hub,
+    hub_index: &HashMap<&str, &surf_core::Hub>,
+    findings: &mut Vec<Finding>,
+) {
+    for raw in &hub.frontmatter.refs {
+        let mut block = |message: String| {
+            findings.push(Finding {
+                severity: Severity::Block,
+                hub: rel.to_string(),
+                claim: String::new(),
+                at: raw.clone(),
+                message,
+            });
+        };
+
+        let parsed = match surf_core::parse_ref(raw) {
+            Ok(r) => r,
+            Err(e) => {
+                block(format!("invalid `refs` entry \"{raw}\": {e}"));
+                continue;
+            }
+        };
+
+        let target_rel = crate::workspace::resolve_ref_path(rel, &parsed.path);
+        if target_rel == rel {
+            block(format!("ref \"{raw}\" points at its own hub"));
+            continue;
+        }
+        let Some(target) = hub_index.get(target_rel.as_str()) else {
+            block(format!(
+                "ref \"{raw}\" does not resolve to a hub (looked for `{target_rel}`) — `refs` compose hubs, not arbitrary files"
+            ));
+            continue;
+        };
+
+        if !parsed.segments.is_empty() {
+            let names: Vec<&str> = parsed.segments.iter().map(|s| s.name.as_str()).collect();
+            let matched = target.frontmatter.anchors.iter().any(|c| {
+                c.at.sites().iter().any(|site| {
+                    parse_anchor(site).is_ok_and(|a| {
+                        let anchor_names: Vec<&str> =
+                            a.segments.iter().map(|s| s.name.as_str()).collect();
+                        anchor_names.ends_with(&names)
+                    })
+                })
+            });
+            if !matched {
+                block(format!(
+                    "ref \"{raw}\" names a claim `{}` that no anchor in `{target_rel}` matches",
+                    names.join(" > ")
+                ));
+            }
         }
     }
 }
@@ -902,6 +975,105 @@ mod tests {
             .expect("expected an unmatched-anchor warning");
         assert_eq!(warn.severity, Severity::Warn);
         assert_eq!(warn.at, "src/auth.rs");
+    }
+
+    #[test]
+    fn refs_to_existing_hub_is_silent() {
+        let (_t, ws) = ws_with(&[
+            ("src/auth.rs", "pub fn greet() {}\n"),
+            (
+                "hubs/a.md",
+                "---\nsummary: x\nrefs:\n  - ./b.md\nanchors:\n  - claim: g\n    at: src/auth.rs > greet\n---\n",
+            ),
+            ("hubs/b.md", "---\nsummary: y\n---\n# B\n"),
+        ]);
+        assert!(lint_workspace(&ws).unwrap().is_empty());
+    }
+
+    #[test]
+    fn refs_to_missing_hub_blocks() {
+        let (_t, ws) = ws_with(&[("hubs/a.md", "---\nsummary: x\nrefs:\n  - ./gone.md\n---\n")]);
+        let f = lint_workspace(&ws).unwrap();
+        let block = f
+            .iter()
+            .find(|x| x.message.contains("does not resolve to a hub"))
+            .expect("expected a dangling-ref error");
+        assert_eq!(block.severity, Severity::Block);
+        assert_eq!(block.at, "./gone.md");
+    }
+
+    #[test]
+    fn refs_to_non_hub_file_blocks() {
+        // A doc path is not a hub — the reclassification trigger for the two ../docs refs (#4).
+        let (_t, ws) = ws_with(&[(
+            "hubs/a.md",
+            "---\nsummary: x\nrefs:\n  - ../docs/guide.md\n---\n",
+        )]);
+        let f = lint_workspace(&ws).unwrap();
+        assert!(f
+            .iter()
+            .any(|x| x.severity == Severity::Block && x.message.contains("does not resolve")));
+    }
+
+    #[test]
+    fn self_ref_blocks() {
+        let (_t, ws) = ws_with(&[("hubs/a.md", "---\nsummary: x\nrefs:\n  - ./a.md\n---\n")]);
+        let f = lint_workspace(&ws).unwrap();
+        let block = f
+            .iter()
+            .find(|x| x.message.contains("its own hub"))
+            .expect("expected a self-ref error");
+        assert_eq!(block.severity, Severity::Block);
+    }
+
+    #[test]
+    fn malformed_ref_blocks() {
+        let (_t, ws) = ws_with(&[(
+            "hubs/a.md",
+            "---\nsummary: x\nrefs:\n  - '> dangling'\n---\n",
+        )]);
+        let f = lint_workspace(&ws).unwrap();
+        assert!(f
+            .iter()
+            .any(|x| x.severity == Severity::Block && x.message.contains("invalid `refs` entry")));
+    }
+
+    #[test]
+    fn claim_ref_matches_anchor_suffix() {
+        // `./b.md > greet` resolves: b.md has a claim anchored at `src/auth.rs > greet`.
+        let (_t, ws) = ws_with(&[
+            ("src/auth.rs", "pub fn greet() {}\n"),
+            (
+                "hubs/a.md",
+                "---\nsummary: x\nrefs:\n  - ./b.md > greet\n---\n",
+            ),
+            (
+                "hubs/b.md",
+                "---\nsummary: y\nanchors:\n  - claim: g\n    at: src/auth.rs > greet\n---\n",
+            ),
+        ]);
+        assert!(lint_workspace(&ws).unwrap().is_empty());
+    }
+
+    #[test]
+    fn claim_ref_with_no_matching_anchor_blocks() {
+        let (_t, ws) = ws_with(&[
+            ("src/auth.rs", "pub fn greet() {}\n"),
+            (
+                "hubs/a.md",
+                "---\nsummary: x\nrefs:\n  - ./b.md > nonexistent\n---\n",
+            ),
+            (
+                "hubs/b.md",
+                "---\nsummary: y\nanchors:\n  - claim: g\n    at: src/auth.rs > greet\n---\n",
+            ),
+        ]);
+        let f = lint_workspace(&ws).unwrap();
+        let block = f
+            .iter()
+            .find(|x| x.message.contains("no anchor in"))
+            .expect("expected a no-matching-claim error");
+        assert_eq!(block.severity, Severity::Block);
     }
 
     fn agents_findings(ws: &Workspace) -> Vec<Finding> {

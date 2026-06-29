@@ -5,6 +5,7 @@ pub mod config;
 pub mod hash;
 pub mod hub;
 pub mod lang;
+pub mod refs;
 pub mod rename;
 pub mod report;
 pub mod resolve;
@@ -17,6 +18,7 @@ pub use hash::{
 };
 pub use hub::{parse_hub, set_anchor_at, set_anchor_hash, At, Claim, Frontmatter, Hub, HubError};
 pub use lang::Lang;
+pub use refs::{parse_ref, Ref, RefParseError};
 pub use rename::find_renamed;
 pub use report::{CheckReport, Divergence, DivergenceKind, REPORT_VERSION};
 pub use resolve::{

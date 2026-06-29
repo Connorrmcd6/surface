@@ -10,7 +10,7 @@ anchors:
       before sealing.
     at: surf-cli/src/main.rs > Command
     hash: 2:1af394872add
-refs: ["../docs/reference/commands.md"]
+refs: []
 ---
 
 # CLI reference surface
