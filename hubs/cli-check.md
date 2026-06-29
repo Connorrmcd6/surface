@@ -8,7 +8,7 @@ anchors:
       a mismatch → Changed; a clean match is tagged with whether the stamp was still v1. The
       verdict is deterministic and needs no git.
     at: surf-cli/src/check.rs > check_claim
-    hash: 2:36cbbc039ab1
+    hash: 2:66e7b4149d60
   - claim: >
       Scoping is opt-in and intersective: with neither --base nor --files every claim is checked.
       A claim is in scope when any of its anchored files matches each active filter — the --base
@@ -17,7 +17,7 @@ anchors:
       records whether it ever matched an anchored file (tallied before the --base filter), so a
       pattern that scopes the gate to nothing is detectable after the walk.
     at: surf-cli/src/check.rs > Scope > includes
-    hash: 2:d459cc00d69b
+    hash: 2:64277175938c
   - claim: >
       The gate fails closed: a hub whose frontmatter won't parse yields an Unresolvable
       divergence (blocking the run) rather than being silently skipped, so a frontmatter typo
@@ -26,7 +26,7 @@ anchors:
       pattern matched nothing, so a typo'd --files can't read as a clean run) and a count of
       clean anchors still stamped under v1, so run can nudge the one-time `surf verify` upgrade.
     at: surf-cli/src/check.rs > check_workspace
-    hash: 2:d8957ecb971d
+    hash: 2:4f5890aca70c
 refs: []
 ---
 

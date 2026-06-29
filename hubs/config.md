@@ -5,7 +5,7 @@ anchors:
       surf.toml parses into a Config whose hubs default to ["hubs/*.md"]; unknown keys are
       rejected. Filesystem discovery (walking up for the marker) lives in the CLI, not here.
     at: surf-core/src/config.rs > parse_config
-    hash: 2:7b98f22a91b6
+    hash: 2:ac841079e472
 refs: []
 ---
 

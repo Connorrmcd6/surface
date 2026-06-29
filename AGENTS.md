@@ -5,7 +5,7 @@ anchors:
       surf lint blocks when AGENTS.md carries a surf:hubs block that does not link the configured
       hubs directory, or when that directory does not exist; without the block it stays silent.
     at: surf-cli/src/lint.rs > lint_agents_pointer
-    hash: 2:9a5f7d9fd0db
+    hash: 2:ac139b65f5f0
 refs: []
 ---
 

@@ -5,12 +5,12 @@ anchors:
       discover walks up from a starting directory to the nearest surf.toml (like git/ruff),
       parses it, and returns the root + config; it errors if no marker is found in any parent.
     at: surf-cli/src/workspace.rs > Workspace > discover
-    hash: 2:f9a5e81dc046
+    hash: 2:7d57c89fcc0d
   - claim: >
       hub_paths globs the config's hub patterns relative to the discovered root, sorted and
       deduped.
     at: surf-cli/src/workspace.rs > Workspace > hub_paths
-    hash: 2:275e1726b702
+    hash: 2:c69c8264bcfd
 refs: []
 ---
 

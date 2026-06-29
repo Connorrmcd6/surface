@@ -9,7 +9,7 @@ anchors:
       flag, or changing a default, diverges this anchor — re-read docs/reference/commands.md
       before sealing.
     at: surf-cli/src/main.rs > Command
-    hash: 2:0d910ff4886d
+    hash: 2:1af394872add
 refs: ["../docs/reference/commands.md"]
 ---
 

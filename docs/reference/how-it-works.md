@@ -11,14 +11,14 @@ The gate runs in four steps.
    `Type` alone is ambiguous, `Type > method` is unique. In Python the path also resolves
    non-callables: module constants, type aliases, and class attributes.
 2. **Canonicalize.** Walk that span's syntax tree into a token stream. Whitespace and comments
-   aren't in the tree, so they drop out for free; identifiers are alpha-renamed to positional
-   placeholders (a *consistent* rename yields the same tokens, swapping two names does not);
-   operators, keywords, and literal *values* are kept verbatim. Python decorators are part of the
-   span, and a decorator's *name* is kept verbatim — so swapping `@cache` for `@lru_cache`, or
-   `@staticmethod` for `@classmethod`, changes the hash. **Member-access names are kept verbatim
-   too** (`obj.foo`, `pkg.Bar`, `Enum.VARIANT`), so re-pointing a span at a *different* external
-   symbol — `PointsTier.TIER_1` → `TIER_2`, `b.Del` → `b.Keep` — changes the hash even when the
-   name occurs once. (This last rule is the **v2** recipe; see [Hash recipes](./hash-recipes.md).)
+   aren't in the tree, so they drop out for free; operators, keywords, and literal *values* are
+   kept verbatim. Identifiers split into two kinds: a **bound** name (the symbol's own name,
+   parameters, locals, loop/destructuring binders) is alpha-renamed to a positional placeholder,
+   so a *consistent* local rename yields the same tokens; a **free** name (external members, call
+   targets, types, enum/constant references, object keys, decorators) is kept verbatim, so
+   re-pointing a span at a *different* symbol — `PointsTier.TIER_1` → `TIER_2`, `getHighest` →
+   `getLowest`, `@cache` → `@lru_cache` — changes the hash even when the name occurs once. (This
+   bound/free split is the **v2** recipe; see [Hash recipes](./hash-recipes.md).)
 3. **Hash.** SHA-256 of that stream, truncated to 12 hex. A list `at:` combines its sites into one
    hash, so the claim is stale if *any* listed span changes.
 4. **Compare** against the stamp stored in the frontmatter (written by `surf verify`). The stamp

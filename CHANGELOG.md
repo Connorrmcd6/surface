@@ -21,13 +21,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   json` is unchanged.
 - **`surf new` scaffold** ships a prose-first template (`## How it works` / `## Boundary`
   headings and a multi-anchor example claim) so a fresh hub is shaped like an onboarding doc.
-- **Hash recipe v2 (member-access names verbatim).** The canonical hash now keeps the
-  property/field component of a member-access expression verbatim instead of alpha-renaming it,
-  so re-pointing an anchored span at a *different* external symbol — `PointsTier.TIER_1` →
-  `TIER_2`, `b.Del` → `b.Keep`, `ProbeColor.RED` → `GREEN` — changes the hash even when the name
-  occurs once. Previously these passed the gate silently while the claim's prose became false
-  (#140, the member-access slice of #77). Consistent local/parameter renames stay quiet, as
-  before. Covers TypeScript, Go, Rust, and Python.
+- **Hash recipe v2 — the bound/free split (#77).** The canonical hash now alpha-renames only
+  *bound* identifiers (a symbol's own name, parameters, locals, loop/range/comprehension
+  variables, `with`/`catch` aliases, generic params, destructuring binders) and emits every
+  *free* identifier verbatim (external members, call targets, types, enum/constant references,
+  object keys, decorators). Re-pointing an anchored span at a *different* symbol is now loud even
+  when the name occurs once — `PointsTier.TIER_1` → `TIER_2`, `getHighest` → `getLowest`, a bare
+  `helper(x)` → `other(x)`, a parameter type `Foo` → `Bar`, an object key `{ alpha }` →
+  `{ beta }` — where before it passed the gate silently while the claim's prose became false.
+  Consistent local/parameter renames stay quiet, as before. This subsumes the earlier
+  member-access-only first cut and the Python decorator special case (#8). A new in-tree
+  differential harness (`surf-core/tests/differential_hash.rs`) gates the change: zero
+  benign-rename regressions, 100% catch on the semantic free-swap corpus across all four
+  languages. Binding detection is tree-sitter-only and fail-closed; the one accepted
+  approximation (match-arm pattern identifiers are treated as free) is documented in
+  [Hash recipes](docs/reference/hash-recipes.md). Covers TypeScript, Go, Rust, and Python.
 - **Versioned stamps.** Stored hashes now carry their recipe: a v2 stamp is prefixed `2:`, a bare
   12-hex stamp is an implicit v1. `surf check` verifies each stamp under its own recipe, so
   existing v1 stamps keep passing (with a one-line nudge) until `surf verify` re-stamps them as

@@ -6,12 +6,12 @@ anchors:
       scalar or a list, hash is optional until verified, and unknown fields are rejected — though
       forward-declared fields (`refs`, `covers`) are accepted and stored but inert in the verdict.
     at: surf-core/src/hub.rs > parse_hub
-    hash: 2:55be573a0ca2
+    hash: 2:c510c6032ba7
   - claim: >
       verify writes hashes back surgically: set_anchor_hash locates the Nth anchor item and
       replaces/inserts only its hash line, so an unchanged hash is byte-identical.
     at: surf-core/src/hub.rs > set_anchor_hash
-    hash: 2:a65d5c324dc5
+    hash: 2:29805baa85ea
 refs: []
 covers:
   - surf-core/src/hub.rs

@@ -6,7 +6,7 @@ anchors:
       a 1-based `@N` positional suffix for genuine name collisions. Empty/zero/missing parts
       are typed parse errors.
     at: surf-core/src/anchor.rs > parse_anchor
-    hash: 2:0f9a4f9d406d
+    hash: 2:5499582e3a55
 refs: []
 ---
 

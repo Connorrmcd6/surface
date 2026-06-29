@@ -1,41 +1,15 @@
 //! AST-canonical hashing (§6.1) and advisory diff magnitude (§6.2).
 //!
-//! The hash is computed over a canonical token stream of the symbol's subtree:
-//! - whitespace and formatting are absent from the tree, so they are ignored for free;
-//! - comments are dropped explicitly;
-//! - identifiers are alpha-renamed to positional placeholders (`#0`, `#1`, …) in order of
-//!   first occurrence, so a *consistent* rename hashes identically while swapping two names
-//!   does not;
-//! - operators, keywords, punctuation, and literal *values* are kept verbatim — so a
-//!   flipped operator (`+`→`-`), a relaxed comparison (`<`→`<=`), a deleted `await`, or a
-//!   changed constant all change the hash.
-//!
-//! The result is quiet on the changes you want ignored and loud on the ones you must catch.
-//!
-//! ## Recipes (versioned canonicalization)
-//!
-//! The canonicalization above is the **v1** recipe. **v2** (#140) adds one rule: the
-//! property/field component of a member-access expression (`obj.foo`, `pkg.Bar`) is kept
-//! *verbatim* rather than alpha-renamed, so re-pointing an anchored span at a different
-//! external symbol (`PointsTier.TIER_1` → `TIER_2`, `b.Del` → `b.Keep`) changes the hash even
-//! when the name occurs exactly once. These positions are never bindings, so emitting them
-//! verbatim cannot resurface a benign local rename. v1 ≡ v2 minus that single rule — one mode
-//! flag, no frozen copy of the old algorithm.
-//!
-//! Stored stamps carry their recipe: a v2 stamp is prefixed `2:`, a bare 12-hex stamp is
-//! implicitly v1. New stamps are written under [`Recipe::CURRENT`]; `check` verifies a stamp
-//! under *its own* recipe, so existing v1 stamps keep working until `surf verify` upgrades
-//! them. See `docs/hash-recipes.md`.
-//!
-//! `Magnitude` is advisory triage metadata only. It is never compared, thresholded, or used
-//! to decide pass/fail — that would defeat the whole point (§6.2).
+//! The design (quiet on cosmetics, loud on logic), the v1/v2 recipes, and the bound/free split
+//! live in `hubs/hash.md` and `docs/reference/hash-recipes.md` — anchored to the functions below
+//! so they can't silently rot. `Magnitude` is advisory triage only; it never gates (§6.2).
 
 use crate::anchor::Anchor;
 use crate::lang::{Family, Lang};
 use crate::resolve::{hashable_node, parse_tree, resolve_nodes, ResolveError};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write as _;
 use tree_sitter::Node;
 
@@ -55,7 +29,8 @@ pub struct HashOpts {
 pub enum Recipe {
     /// Original recipe: every identifier alpha-renamed. Implicit for bare (unprefixed) stamps.
     V1,
-    /// v1 plus the member-access-name verbatim rule (#140). Stamps are prefixed `2:`.
+    /// The bound/free split (#77): only bound identifiers alpha-renamed, free identifiers
+    /// (external members, call targets, types, constants) verbatim. Stamps are prefixed `2:`.
     V2,
 }
 
@@ -180,21 +155,39 @@ fn anchor_tokens(
     // A Python @overload group hashes as one token stream — stubs then impl in source order,
     // sharing one alpha-rename map — so a signature change in *any* overload changes the
     // hash (#82). The usual single-node case is unchanged.
+    let hashable: Vec<Node> = nodes
+        .into_iter()
+        .map(|n| hashable_node(n, family))
+        .collect();
+    let bound = bound_names(&hashable, family, src, recipe);
     let mut out = Vec::new();
     let mut idents: HashMap<String, usize> = HashMap::new();
-    for node in nodes {
+    for node in hashable {
         emit(
-            hashable_node(node, family),
+            node,
             src,
             family,
             opts,
             recipe,
             false,
+            &bound,
             &mut idents,
             &mut out,
         );
     }
     Ok(out)
+}
+
+/// The names bound inside the span — the only identifiers v2 alpha-renames. Empty under v1
+/// (every identifier alpha-renamed regardless). One set is shared across an `@overload` group.
+fn bound_names(nodes: &[Node], family: Family, src: &[u8], recipe: Recipe) -> HashSet<String> {
+    let mut bound = HashSet::new();
+    if recipe == Recipe::V2 {
+        for node in nodes {
+            collect_bound(*node, family, src, &mut bound);
+        }
+    }
+    bound
 }
 
 pub(crate) fn hash_node(
@@ -214,15 +207,18 @@ fn canonical_tokens(
     opts: HashOpts,
     recipe: Recipe,
 ) -> Vec<String> {
+    let node = hashable_node(node, family);
+    let bound = bound_names(std::slice::from_ref(&node), family, src, recipe);
     let mut out = Vec::new();
     let mut idents: HashMap<String, usize> = HashMap::new();
     emit(
-        hashable_node(node, family),
+        node,
         src,
         family,
         opts,
         recipe,
         false,
+        &bound,
         &mut idents,
         &mut out,
     );
@@ -236,11 +232,10 @@ fn emit(
     family: Family,
     opts: HashOpts,
     recipe: Recipe,
-    // True while inside a decorator's *name* (the symbol being applied), where identifiers are
-    // kept verbatim rather than alpha-renamed — so `@cache` → `@lru_cache` or
-    // `@staticmethod` → `@classmethod` is caught (§6.1, #8). Arguments to a decorator follow the
-    // normal rules, so reformatting them stays quiet.
+    // v1 only: a decorator name kept verbatim (#8). v2 treats it as a free identifier instead.
     decorator_name: bool,
+    // v2 only: names bound in the span; an identifier is alpha-renamed iff its text is in here.
+    bound: &HashSet<String>,
     idents: &mut HashMap<String, usize>,
     out: &mut Vec<String>,
 ) {
@@ -252,10 +247,12 @@ fn emit(
     if node.is_named() {
         if is_identifier(kind, family) {
             let text = node.utf8_text(src).unwrap_or_default();
-            // v2 keeps member-access names verbatim too, so `obj.foo` → `obj.bar` is loud even
-            // when `bar` occurs once (#140). v1 keeps only decorator names verbatim.
-            let verbatim =
-                decorator_name || (recipe == Recipe::V2 && is_member_access_name(node, family));
+            // A member-access name is verbatim even when it collides with a bound local
+            // (`x` the param vs `obj.x` the field) — that position can never be the binding.
+            let verbatim = match recipe {
+                Recipe::V1 => decorator_name,
+                Recipe::V2 => is_member_access_name(node, family) || !bound.contains(text),
+            };
             if verbatim {
                 out.push(format!("{kind}:{text}"));
             } else {
@@ -308,19 +305,162 @@ fn emit(
             opts,
             recipe,
             child_decorator_name,
+            bound,
             idents,
             out,
         );
     }
 }
 
-/// True for the property/field component of a member-access expression — the part the v2
-/// recipe (#140) keeps verbatim. These positions name an *external* member, never a local
-/// binding, so emitting them verbatim distinguishes "re-pointed at a different symbol" from
-/// "renamed my own local" without breaking rename tolerance. Each family is matched
-/// structurally (kind + parent kind + the parent's named field) so an identifier that merely
-/// *shares* the kind in another position (e.g. an object-literal key, a method *name*) is left
-/// to the normal alpha-rename.
+/// Walk the span collecting every bound name (see `hubs/hash.md`). Fail-closed: a position not
+/// positively recognized as a binding by [`bind_here`] is left free.
+fn collect_bound(node: Node, family: Family, src: &[u8], out: &mut HashSet<String>) {
+    bind_here(node, family, src, out);
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        collect_bound(child, family, src, out);
+    }
+}
+
+/// The per-family binding-position table: declaration names bind directly, pattern positions
+/// via [`harvest`].
+fn bind_here(node: Node, family: Family, src: &[u8], out: &mut HashSet<String>) {
+    let kind = node.kind();
+    match family {
+        Family::Rust => match kind {
+            "function_item" | "function_signature_item" => bind_field_text(node, "name", src, out),
+            "parameter" | "let_declaration" | "for_expression" | "let_condition" => {
+                harvest_field(node, "pattern", src, out)
+            }
+            "closure_parameters" | "type_parameters" => harvest_children(node, src, out),
+            _ => {}
+        },
+        Family::TypeScript => match kind {
+            "function_declaration"
+            | "generator_function_declaration"
+            | "function_signature"
+            | "method_definition"
+            | "method_signature"
+            | "abstract_method_signature" => bind_field_text(node, "name", src, out),
+            "required_parameter" | "optional_parameter" => harvest_field(node, "pattern", src, out),
+            "variable_declarator" => harvest_field(node, "name", src, out),
+            "arrow_function" => harvest_field(node, "parameter", src, out),
+            "for_in_statement" => harvest_field(node, "left", src, out),
+            "catch_clause" => harvest_field(node, "parameter", src, out),
+            "type_parameters" => harvest_children(node, src, out),
+            _ => {}
+        },
+        Family::Python => match kind {
+            "function_definition" => bind_field_text(node, "name", src, out),
+            // A default's *value* is a free expression, so bind only the name; every other
+            // parameter form (plain, typed, `*args`, `**kw`) harvests cleanly.
+            "parameters" | "lambda_parameters" => {
+                let mut cursor = node.walk();
+                for child in node.named_children(&mut cursor) {
+                    match child.kind() {
+                        "default_parameter" | "typed_default_parameter" => {
+                            bind_field_text(child, "name", src, out)
+                        }
+                        _ => harvest(child, src, out),
+                    }
+                }
+            }
+            "assignment" | "augmented_assignment" | "for_statement" | "for_in_clause" => {
+                harvest_field(node, "left", src, out)
+            }
+            "as_pattern_target" => harvest(node, src, out),
+            _ => {}
+        },
+        Family::Go => match kind {
+            "function_declaration"
+            | "method_declaration"
+            | "var_spec"
+            | "const_spec"
+            | "type_parameter_declaration" => bind_field_text(node, "name", src, out),
+            "parameter_declaration" | "variadic_parameter_declaration" => {
+                bind_field_text(node, "name", src, out)
+            }
+            "short_var_declaration" | "range_clause" => harvest_field(node, "left", src, out),
+            _ => {}
+        },
+    }
+}
+
+/// Bind the text of every `field` child directly — bypassing [`harvest`]'s leaf filter so a
+/// method name counts but a destructuring key does not. All matching fields, so `var a, b` binds
+/// both.
+fn bind_field_text(node: Node, field: &str, src: &[u8], out: &mut HashSet<String>) {
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            if cursor.field_name() == Some(field) {
+                if let Ok(text) = cursor.node().utf8_text(src) {
+                    out.insert(text.to_string());
+                }
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+}
+
+/// [`harvest`] every `field` child (a pattern position).
+fn harvest_field(node: Node, field: &str, src: &[u8], out: &mut HashSet<String>) {
+    let mut cursor = node.walk();
+    if cursor.goto_first_child() {
+        loop {
+            if cursor.field_name() == Some(field) {
+                harvest(cursor.node(), src, out);
+            }
+            if !cursor.goto_next_sibling() {
+                break;
+            }
+        }
+    }
+}
+
+fn harvest_children(node: Node, src: &[u8], out: &mut HashSet<String>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        harvest(child, src, out);
+    }
+}
+
+/// Collect binding-leaf identifiers from a pattern subtree, skipping path/member positions and
+/// `type:` fields (external names, never local bindings). A destructure *key* is not a leaf kind,
+/// so re-pointing it at a different source member stays loud.
+fn harvest(node: Node, src: &[u8], out: &mut HashSet<String>) {
+    match node.kind() {
+        "scoped_identifier"
+        | "scoped_type_identifier"
+        | "attribute"
+        | "member_expression"
+        | "selector_expression"
+        | "field_expression" => return,
+        "identifier"
+        | "type_identifier"
+        | "shorthand_field_identifier"
+        | "shorthand_property_identifier_pattern" => {
+            if let Ok(text) = node.utf8_text(src) {
+                out.insert(text.to_string());
+            }
+            return;
+        }
+        _ => {}
+    }
+    let type_field = node.child_by_field_name("type").map(|n| n.id());
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if Some(child.id()) != type_field {
+            harvest(child, src, out);
+        }
+    }
+}
+
+/// The property/field component of a member access (see `hubs/hash.md`). Matched structurally
+/// (kind + parent kind + named field) so the same kind elsewhere (an object key, a method name)
+/// isn't caught.
 fn is_member_access_name(node: Node, family: Family) -> bool {
     let Some(parent) = node.parent() else {
         return false;
@@ -572,17 +712,91 @@ mod tests {
         );
     }
 
-    /// An object-literal *key* is a `property_identifier` too, but not a member access — it stays
-    /// alpha-renamed, so renaming both a key and its sole reference consistently is quiet (the
-    /// structural check guards against over-firing on non-access `property_identifier`s).
+    /// An object-literal *key* is free (not a binding), so under the bound/free split renaming it
+    /// is loud — it changes the shape of the constructed object, the same class of change as a
+    /// member rename. v1, which alpha-renames every identifier, is blind to it.
     #[test]
-    fn object_literal_key_is_not_treated_as_member_access() {
+    fn object_literal_key_rename_is_v1_blind_and_v2_loud() {
         let a = "export function f() { const o = { alpha: 1 }; return o; }\n";
         let b = "export function f() { const o = { beta: 1 }; return o; }\n";
-        // Both v1 and v2 see a single identifier in that position → alpha-renamed → equal.
         assert_eq!(
+            raw(a, Lang::TypeScript, "x.ts > f", Recipe::V1),
+            raw(b, Lang::TypeScript, "x.ts > f", Recipe::V1),
+        );
+        assert_ne!(
             raw(a, Lang::TypeScript, "x.ts > f", Recipe::V2),
             raw(b, Lang::TypeScript, "x.ts > f", Recipe::V2),
+        );
+    }
+
+    /// Swapping a bare single-occurrence free call target (no receiver, so not a member access) is
+    /// invisible to v1 but loud under the full split.
+    #[test]
+    fn bare_free_call_target_swap_is_v1_blind_and_v2_loud() {
+        let a = "pub fn f(x: i64) -> i64 { helper(x) }\n";
+        let b = "pub fn f(x: i64) -> i64 { other(x) }\n";
+        assert_eq!(
+            raw(a, Lang::Rust, "x.rs > f", Recipe::V1),
+            raw(b, Lang::Rust, "x.rs > f", Recipe::V1),
+            "v1 alpha-renames the call target → blind",
+        );
+        assert_ne!(
+            raw(a, Lang::Rust, "x.rs > f", Recipe::V2),
+            raw(b, Lang::Rust, "x.rs > f", Recipe::V2),
+            "v2 emits the free call target verbatim → loud",
+        );
+    }
+
+    /// A free type reference is verbatim under v2: changing a parameter's type is a contract
+    /// change, caught even when the type name occurs once. A *generic* parameter, declared in the
+    /// span, stays bound — renaming it consistently is quiet.
+    #[test]
+    fn free_type_is_loud_generic_param_is_quiet() {
+        let a = "pub fn f(x: Foo) -> i64 { 0 }\n";
+        let b = "pub fn f(x: Bar) -> i64 { 0 }\n";
+        assert_ne!(
+            raw(a, Lang::Rust, "x.rs > f", Recipe::V2),
+            raw(b, Lang::Rust, "x.rs > f", Recipe::V2),
+            "swapping an external type is loud",
+        );
+        let g1 = "pub fn f<T>(x: T) -> T { x }\n";
+        let g2 = "pub fn f<U>(x: U) -> U { x }\n";
+        assert_eq!(
+            raw(g1, Lang::Rust, "x.rs > f", Recipe::V2),
+            raw(g2, Lang::Rust, "x.rs > f", Recipe::V2),
+            "renaming a generic parameter consistently is quiet",
+        );
+    }
+
+    /// Destructuring binders are bound (renaming them is quiet), but the *source key* they read
+    /// from is free (re-pointing at a different member is loud) — across the pattern forms each
+    /// family offers.
+    #[test]
+    fn destructuring_binder_quiet_source_key_loud() {
+        // TS object destructuring: rename the binder `b` → quiet; change the source key → loud.
+        let bind_a = "export function f(o: O) { const { k: b } = o; return b; }\n";
+        let bind_b = "export function f(o: O) { const { k: c } = o; return c; }\n";
+        assert_eq!(
+            raw(bind_a, Lang::TypeScript, "x.ts > f", Recipe::V2),
+            raw(bind_b, Lang::TypeScript, "x.ts > f", Recipe::V2),
+        );
+        let key_a = "export function f(o: O) { const { k: b } = o; return b; }\n";
+        let key_b = "export function f(o: O) { const { j: b } = o; return b; }\n";
+        assert_ne!(
+            raw(key_a, Lang::TypeScript, "x.ts > f", Recipe::V2),
+            raw(key_b, Lang::TypeScript, "x.ts > f", Recipe::V2),
+        );
+    }
+
+    /// A Python decorator name is a free identifier under v2, so `@cache` → `@lru_cache` is loud
+    /// without the dedicated decorator special case v1 needed (#8 is subsumed by the split).
+    #[test]
+    fn decorator_name_swap_is_loud_under_v2_without_special_case() {
+        let a = "@cache\ndef f(x):\n    return x\n";
+        let b = "@lru_cache\ndef f(x):\n    return x\n";
+        assert_ne!(
+            raw(a, Lang::Python, "x.py > f", Recipe::V2),
+            raw(b, Lang::Python, "x.py > f", Recipe::V2),
         );
     }
 }
