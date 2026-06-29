@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-06-29
+
 ### Added
 - **`refs` hub composition (#4).** A hub's `refs:` now compose *other hubs*: a path relative to the
   referencing hub (`./resolve.md`), optionally `> symbol` to address one claim within the target
@@ -317,7 +319,8 @@ Initial release — the MVP gate that surfaces docs↔code divergence.
 - Language support: TypeScript/TSX, JavaScript/JSX, Rust, Python, and Go.
 - Distribution: GitHub Action, pre-commit hook, and `install.sh`; Apache-2.0 license.
 
-[Unreleased]: https://github.com/Connorrmcd6/surface/compare/v0.6.3...HEAD
+[Unreleased]: https://github.com/Connorrmcd6/surface/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/Connorrmcd6/surface/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/Connorrmcd6/surface/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/Connorrmcd6/surface/compare/v0.6.1...v0.6.2
 [0.6.1]: https://github.com/Connorrmcd6/surface/compare/v0.6.0...v0.6.1
