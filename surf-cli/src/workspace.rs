@@ -5,7 +5,7 @@
 use anyhow::{Context, Result};
 use std::path::{Component, Path, PathBuf};
 use surf_core::config::{parse_config, Config, CONFIG_FILE};
-use surf_core::{parse_anchor, parse_hub, Anchor, Hub, HubError, Lang};
+use surf_core::{doc_kind, parse_anchor, parse_hub, Anchor, DocKind, Hub, HubError, Lang};
 
 pub struct Workspace {
     pub root: PathBuf,
@@ -14,9 +14,12 @@ pub struct Workspace {
 
 /// One hub file located, read, and parsed. `hub` carries the parse result per-hub so each
 /// command must consciously decide what to do with a malformed hub (block, skip, warn)
-/// rather than re-implementing — and diverging on — that choice.
+/// rather than re-implementing — and diverging on — that choice. `kind` marks OKF reserved
+/// files (`index.md`/`log.md`), which hold no claims and must never block the gate when they
+/// lack frontmatter.
 pub struct LoadedHub {
     pub rel: String,
+    pub kind: DocKind,
     pub hub: Result<Hub, HubError>,
 }
 
@@ -42,18 +45,33 @@ impl Workspace {
 
     pub fn hub_paths(&self) -> Result<Vec<PathBuf>> {
         let mut out = Vec::new();
+        // Flat hub globs, verbatim.
         for pattern in &self.config.hubs {
-            let joined = self.root.join(pattern);
+            self.glob_into(pattern, &mut out)?;
+        }
+        // OKF bundle roots: each is a directory tree, so match every `.md` beneath it. Reserved
+        // files (index.md/log.md) are swept up here and classified/skipped downstream.
+        for root in &self.config.bundles {
+            let joined = PathBuf::from(root).join("**/*.md");
             let pattern = joined
                 .to_str()
-                .with_context(|| format!("hub glob is not valid UTF-8: {}", joined.display()))?;
-            for entry in glob::glob(pattern).context("invalid hub glob pattern")? {
-                out.push(entry?);
-            }
+                .with_context(|| format!("bundle root is not valid UTF-8: {root}"))?;
+            self.glob_into(pattern, &mut out)?;
         }
         out.sort();
         out.dedup();
         Ok(out)
+    }
+
+    fn glob_into(&self, pattern: &str, out: &mut Vec<PathBuf>) -> Result<()> {
+        let joined = self.root.join(pattern);
+        let pattern = joined
+            .to_str()
+            .with_context(|| format!("hub glob is not valid UTF-8: {}", joined.display()))?;
+        for entry in glob::glob(pattern).context("invalid hub glob pattern")? {
+            out.push(entry?);
+        }
+        Ok(())
     }
 
     /// Read and parse every hub. I/O failure hard-errors the run (an unreadable hub is
@@ -70,7 +88,8 @@ impl Workspace {
             let content = std::fs::read_to_string(&path)
                 .with_context(|| format!("reading {}", path.display()))?;
             let hub = parse_hub(&content);
-            out.push(LoadedHub { rel, hub });
+            let kind = doc_kind(&rel);
+            out.push(LoadedHub { rel, kind, hub });
         }
         Ok(out)
     }
@@ -176,5 +195,36 @@ mod tests {
             .filter_map(|p| p.file_name()?.to_str())
             .collect();
         assert_eq!(names, vec!["auth.md", "billing.md"]);
+    }
+
+    #[test]
+    fn bundle_root_discovers_nested_concepts_and_reserved_files() {
+        // An OKF bundle root is a directory tree: every `.md` beneath it is discovered (concepts and
+        // reserved index.md/log.md alike), classified by `LoadedHub::kind`.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        fs::write(root.join(CONFIG_FILE), "hubs = []\nbundles = [\"sales\"]\n").unwrap();
+        fs::create_dir_all(root.join("sales/tables")).unwrap();
+        fs::write(root.join("sales/index.md"), "# Sales\n").unwrap();
+        fs::write(
+            root.join("sales/tables/orders.md"),
+            "---\ntype: BigQuery Table\ndescription: orders\n---\n# Orders\n",
+        )
+        .unwrap();
+        fs::write(root.join("sales/tables/log.md"), "# Log\n").unwrap();
+
+        let ws = Workspace::discover(root).unwrap();
+        let loaded = ws.iter_hubs().unwrap();
+        let index = loaded
+            .iter()
+            .find(|l| l.rel.ends_with("index.md"))
+            .expect("index.md discovered");
+        assert_eq!(index.kind, DocKind::Index);
+        let orders = loaded
+            .iter()
+            .find(|l| l.rel.ends_with("orders.md"))
+            .expect("concept discovered");
+        assert_eq!(orders.kind, DocKind::Concept);
+        assert!(loaded.iter().any(|l| l.kind == DocKind::Log));
     }
 }

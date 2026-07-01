@@ -37,6 +37,8 @@ fn template(name: &str) -> String {
     // Explicit `\n` (not `\`-continuation, which would strip the example's indentation).
     let mut s = String::new();
     s.push_str("---\n");
+    // `type` is OKF's one required field, so a scaffolded hub is a conformant OKF concept on disk.
+    s.push_str("type: concept\n");
     s.push_str("summary: TODO one-line summary of this domain.\n");
     s.push_str("anchors: []\n");
     s.push_str("refs: []\n");

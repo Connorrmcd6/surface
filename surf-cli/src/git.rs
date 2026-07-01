@@ -130,6 +130,21 @@ pub fn show(root: &Path, base: &str, rel_file: &str) -> Option<String> {
         .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
+/// The current commit's full SHA (`git rev-parse HEAD`), for recording verify-event provenance.
+/// `None` outside a repo or before the first commit.
+pub fn head_sha(root: &Path) -> Option<String> {
+    let output = Command::new("git")
+        .current_dir(root)
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+}
+
 /// The path `old_path` was renamed to, per git's rename detection between HEAD and the working
 /// tree. `None` if git can't answer or no rename pairs with `old_path`. Best-effort: a pure
 /// `mv` without a content match may show as delete+add and not be detected.

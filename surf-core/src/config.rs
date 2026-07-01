@@ -9,9 +9,15 @@ pub const CONFIG_FILE: &str = "surf.toml";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Config {
-    /// Globs (relative to the config's directory) that enumerate hub documents.
+    /// Globs (relative to the config's directory) that enumerate hub documents. Best for the flat
+    /// `hubs/*.md` layout.
     #[serde(default = "default_hubs")]
     pub hubs: Vec<String>,
+    /// OKF bundle roots (relative to the config's directory): each is a directory *tree* of concept
+    /// files, expanded as `<root>/**/*.md` with OKF reserved files (`index.md`/`log.md`) handled.
+    /// Empty by default; add roots to govern an OKF bundle in place of, or alongside, `hubs`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub bundles: Vec<String>,
 }
 
 fn default_hubs() -> Vec<String> {
@@ -22,6 +28,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             hubs: default_hubs(),
+            bundles: Vec::new(),
         }
     }
 }
@@ -69,5 +76,15 @@ mod tests {
     fn unknown_key_is_rejected() {
         let err = parse_config("nonsense = true").unwrap_err();
         assert!(matches!(err, ConfigError::Toml(_)));
+    }
+
+    #[test]
+    fn bundles_default_empty_and_parse() {
+        assert!(parse_config("").unwrap().bundles.is_empty());
+        let cfg = parse_config("bundles = [\"sales\", \"docs/okf\"]").unwrap();
+        assert_eq!(
+            cfg.bundles,
+            vec!["sales".to_string(), "docs/okf".to_string()]
+        );
     }
 }

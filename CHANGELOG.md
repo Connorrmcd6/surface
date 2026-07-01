@@ -7,6 +7,36 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Hubs are now conformant Open Knowledge Format (OKF) concepts — "Surface = OKF + freshness."** A
+  hub's frontmatter is a superset of an [OKF](docs/guides/okf.md) concept: it carries OKF's `type`
+  (defaulted to `concept` so existing hubs are byte-unchanged and keep working), `title`, `tags`,
+  and `timestamp`, and **preserves any other frontmatter key verbatim** (OKF's `description`/
+  `resource`, a doc system's `author`/`created`/`pinned`) in an `extra` map — the OKF rule that
+  consumers must not drop unknown keys. So a hub drops into any OKF consumer (Google's Knowledge
+  Catalog, the OKF visualizer, Obsidian, git-backed editors), which read the prose and ignore the
+  `anchors:` Surface governs. `surf new` scaffolds `type: concept`.
+- **Freshness provenance and stable claim IDs.** `surf verify` now records the freshness OKF omits:
+  a stable per-claim `id` (written once, never regenerated, so it survives prose/anchor edits — the
+  substrate for claim timelines) plus `verified_at` and `verified_commit`. The *who* is deliberately
+  not stored (git blame on the hub records it) — keeping author emails out of tracked files.
+  Provenance is written **only when the hash actually changes**, so a no-op re-verify stays
+  byte-identical. The `--format json` `Divergence` gains an additive `id` field (no report-version bump).
+- **OKF bundle layout.** `surf.toml` gains a `bundles` glob: each root is a directory *tree* of
+  concept files, expanded as `<root>/**/*.md`. OKF reserved files (`index.md`, `log.md`) are
+  recognized and skipped for governance — they hold no claims and never block the gate.
+- **`surf lint` OKF advisories.** A `Warn` (never a block) for an unknown frontmatter key that looks
+  like a typo of a known one (recovering the fail-closed signal below), a `Warn` when an anchored
+  hub has no headline (`summary`/`title`/`description`), and a `Warn` for a dangling OKF cross-link
+  in a hub body (OKF tolerates broken links, so this never blocks).
+
+### Changed
+- **Frontmatter no longer rejects unknown keys** (OKF requires consumers to preserve them). This is
+  a deliberate, narrow relaxation of the gate's fail-closed posture: a mistyped *frontmatter* key
+  that previously hard-blocked now parses and earns a `surf lint` warning instead. Unknown keys
+  **inside an anchor item** still fail closed — anchor items are Surface's own data, not OKF's.
+- `summary` is now optional (an OKF concept may carry only `description`).
+
 ## [0.7.0] - 2026-06-29
 
 ### Added

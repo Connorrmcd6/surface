@@ -57,6 +57,10 @@ pub struct Divergence {
     pub claim: String,
     pub at: String,
     pub kind: DivergenceKind,
+    /// Stable claim id, present once the claim has been stamped by `surf verify` — the join key for
+    /// claim timelines and attestation history. Additive under the v1 contract; never gates.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub old_hash: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

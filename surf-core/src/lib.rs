@@ -16,7 +16,10 @@ pub use hash::{
     combine_site_hashes, diff_magnitude, format_stamp, hash_anchor, hash_anchor_raw,
     hash_anchor_with, parse_stamp, HashOpts, Magnitude, Recipe,
 };
-pub use hub::{parse_hub, set_anchor_at, set_anchor_hash, At, Claim, Frontmatter, Hub, HubError};
+pub use hub::{
+    doc_kind, parse_hub, set_anchor_at, set_anchor_field, set_anchor_hash, At, Claim, DocKind,
+    Frontmatter, Hub, HubError,
+};
 pub use lang::Lang;
 pub use refs::{parse_ref, Ref, RefParseError};
 pub use rename::find_renamed;

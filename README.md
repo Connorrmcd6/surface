@@ -135,6 +135,15 @@ Surface's JSON output. The core never depends on it. More in
 [What Surface does NOT do](docs/index.md#what-surface-does-not-do) and
 [Is Surface for you?](docs/index.md#is-surface-for-you).
 
+## Speaks OKF
+
+A hub is a conformant [Open Knowledge Format](docs/guides/okf.md) concept — Google's vendor-neutral
+standard for knowledge as markdown + frontmatter. OKF standardizes how knowledge is written down but
+deliberately omits freshness; that's exactly what Surface adds. **Surface = OKF + the freshness OKF
+leaves out.** Your hubs drop into any OKF consumer (Knowledge Catalog, the OKF visualizer, Obsidian,
+git-backed doc editors), which read the prose and ignore the `anchors:` Surface governs. See
+[Surface and OKF](docs/guides/okf.md).
+
 ## Install
 
 Most repos never install the binary — they run the GitHub Action:
@@ -163,6 +172,7 @@ Full docs at **[surface.gradientdev.xyz](https://surface.gradientdev.xyz)** (sou
 
 - [Quickstart](docs/getting-started/quickstart.md) · [Install](docs/getting-started/install.md)
 - [Authoring hubs](docs/guides/authoring-hubs.md) — claims, anchor grammar, granularity, the verify loop.
+- [Surface and OKF](docs/guides/okf.md) — hubs as conformant Open Knowledge Format concepts.
 - [CI integration](docs/guides/ci-integration.md) — the Action, the pre-commit hook, scoping a PR.
 - [Examples](docs/examples.md) — a minimal hub in each supported language.
 - Reference: [Commands](docs/reference/commands.md) · [Configuration](docs/reference/configuration.md) · [How the gate works](docs/reference/how-it-works.md) · [FAQ](docs/reference/faq.md)
