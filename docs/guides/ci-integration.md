@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4   # plain checkout - do NOT set fetch-depth: 0
-      - uses: Connorrmcd6/surface@v0.7.0
+      - uses: Connorrmcd6/surface@v0.8.0
 ```
 
 The action takes `args` (default `check`), `version` (default `latest`), and
