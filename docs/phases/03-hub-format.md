@@ -1,11 +1,11 @@
-# Phase 3 — Hub format + frontmatter parser (the contract)
+# Phase 3 - Hub format + frontmatter parser (the contract)
 
-**Goal:** define and parse the hub document — frontmatter schema + prose body — plus
+**Goal:** define and parse the hub document - frontmatter schema + prose body - plus
 `surf.toml` config discovery. This is the contract everything else binds to.
 
 **Proposal refs:** §6 (claim shape), §6.3 (`at:` as list), §9.1.1 (hub format), §9.1.5 (config marker), §9.3 (`refs` deferred), §9.1 (`covers` absent).
 
-**Depends on:** Phase 0. (Independent of 1/2 — can proceed in parallel.)
+**Depends on:** Phase 0. (Independent of 1/2 - can proceed in parallel.)
 
 **Status:** done
 
@@ -22,14 +22,14 @@
 1. **Schema** (serde structs):
    - `summary`: string.
    - `anchors`: list of `{ claim: string, at: string | [string], hash: string }`.
-     `at:` accepts a scalar **or a list** — a claim is stale if *any* listed span changes (§6.3).
-   - `refs`: parsed but **inert** in the MVP — forward-declared only (§9.3). Do not resolve it.
+     `at:` accepts a scalar **or a list** - a claim is stale if *any* listed span changes (§6.3).
+   - `refs`: parsed but **inert** in the MVP - forward-declared only (§9.3). Do not resolve it.
    - **`covers` is absent** (§9.1): it is consumed only by the deferred reviewer plugin, so
      asking authors to write it now is ceremony. Forward-declared in the proposal, not shipped.
    - Body: the markdown prose after the frontmatter fence.
 2. **Frontmatter split:** leading `---`-fenced YAML block + remaining prose body. Tolerant,
    clear errors on a missing/malformed fence.
-3. **Typed validation errors** surfaced as results `lint` (Phase 4) can render — not panics.
+3. **Typed validation errors** surfaced as results `lint` (Phase 4) can render - not panics.
 4. **Config model + discovery:** `surf.toml` walked up from `cwd` to the nearest marker,
    like `git` / `ruff` (§9.1.5). Config holds the hub glob(s); default `hubs/*.md`.
 

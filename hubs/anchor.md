@@ -1,5 +1,5 @@
 ---
-summary: The `at:` anchor grammar parser — qualified paths plus the `@N` positional selector.
+summary: The `at:` anchor grammar parser - qualified paths plus the `@N` positional selector.
 anchors:
   - claim: >
       An anchor is a file path followed by `>`-separated symbol segments; a segment may carry
@@ -13,4 +13,4 @@ refs: []
 # Anchor grammar
 
 `parse_anchor` turns an `at:` string into a `file` plus ordered `Segment`s. It is pure string
-parsing — resolution against a real tree happens later in `resolve`.
+parsing - resolution against a real tree happens later in `resolve`.

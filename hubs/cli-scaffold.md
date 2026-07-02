@@ -1,8 +1,8 @@
 ---
-summary: surf init / surf new — bootstrap a workspace and scaffold lint-clean hubs.
+summary: surf init / surf new - bootstrap a workspace and scaffold lint-clean hubs.
 anchors:
   - claim: >
-      init writes surf.toml + creates hubs/ in the cwd, and is idempotent — an existing
+      init writes surf.toml + creates hubs/ in the cwd, and is idempotent - an existing
       surf.toml is left untouched.
     at: surf-cli/src/init.rs > run
     hash: 2:640471b94678

@@ -4,7 +4,7 @@ description: Install Surface via npm, the GitHub Action, the pre-commit hook, th
 ---
 
 Surface is a single static binary. The quickest way to get it locally is **npm** (below). In CI,
-most repos never install it directly — they consume the **GitHub Action** or the **pre-commit
+most repos never install it directly - they consume the **GitHub Action** or the **pre-commit
 hook**, which fetch the binary for you. There's also a `curl | sh` installer and a from-source
 build.
 
@@ -16,7 +16,7 @@ npx @gradient-tools/surface check
 ```
 
 A thin shim package pulls in the prebuilt binary for your platform via `optionalDependencies`
-(macOS Apple Silicon and Linux x86_64) — there is no `postinstall` download step. On an
+(macOS Apple Silicon and Linux x86_64) - there is no `postinstall` download step. On an
 unsupported platform the shim errors and points you at the from-source build.
 
 ## GitHub Action
@@ -30,7 +30,7 @@ jobs:
   surface:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4   # plain checkout — do NOT set fetch-depth: 0
+      - uses: actions/checkout@v4   # plain checkout - do NOT set fetch-depth: 0
       - uses: Connorrmcd6/surface@v0.7.0
 ```
 
@@ -57,7 +57,7 @@ Prebuilt binaries are published for **macOS (Apple Silicon)** and **Linux (x86_6
 macOS or other Unix architectures, build from source.
 
 Each release publishes a `<asset>.sha256` alongside every binary, and the install script verifies
-it before installing — a missing checksum or a mismatch aborts the install rather than running an
+it before installing - a missing checksum or a mismatch aborts the install rather than running an
 unverified binary.
 
 ## Platform support

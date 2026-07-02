@@ -6,10 +6,10 @@ anchors:
       frontmatter is a superset of an OKF concept: `type` (defaulted to `concept`, so pre-OKF hubs
       stay valid), `title`, `tags`, `timestamp` sit alongside Surface's `anchors`/`refs`/`covers`,
       and every other key (OKF `description`/`resource`, a doc system's `author`/`created`) is
-      preserved verbatim in `extra` — unknown *frontmatter* keys are kept, not rejected, per OKF.
+      preserved verbatim in `extra` - unknown *frontmatter* keys are kept, not rejected, per OKF.
       Inside an anchor item `at:` is a scalar or list, `hash` is optional until verified, and
       unknown keys there ARE still rejected (a per-anchor typo fails closed). parse_hub resolves
-      neither refs nor covers — acting on them is lint/check's job.
+      neither refs nor covers - acting on them is lint/check's job.
     at:
       - surf-core/src/hub.rs > parse_hub
       - surf-core/src/hub.rs > Frontmatter
@@ -21,7 +21,7 @@ anchors:
   - claim: >
       verify writes fields back surgically: set_anchor_field (which set_anchor_hash wraps) locates
       the Nth anchor item and replaces/inserts only that one key's line, so an unchanged write is
-      byte-identical — the same primitive stamps hash, id, and verified_* provenance.
+      byte-identical - the same primitive stamps hash, id, and verified_* provenance.
     at:
       - surf-core/src/hub.rs > set_anchor_field
       - surf-core/src/hub.rs > set_anchor_hash
@@ -45,7 +45,7 @@ human or agent reads). `parse_hub` is the contract everything else binds to.
 **A hub is an OKF concept, plus freshness.** The frontmatter is a *superset* of an
 [Open Knowledge Format](../docs/guides/okf.md) concept: it carries OKF's `type`/`title`/`tags`/
 `timestamp` (and preserves any other key in `extra`, since OKF requires consumers to keep unknown
-fields), so a hub is a conformant OKF concept that any OKF reader can consume — while Surface's
+fields), so a hub is a conformant OKF concept that any OKF reader can consume - while Surface's
 `anchors` add the freshness OKF omits. That is why `deny_unknown_fields` is *off* for the
 frontmatter (a typo'd key is caught by a `surf lint` warning instead of a hard error) but stays
 *on* for each anchor item, where an unknown key is a genuine mistake that should fail closed.
@@ -53,11 +53,11 @@ frontmatter (a typo'd key is caught by a `surf lint` warning instead of a hard e
 
 **The distinction that drives the design:** a human reviews every write, so edits must be
 *surgical*. Writes go through the line-level editor (`set_anchor_field`, which `set_anchor_hash`
-wraps, plus `set_anchor_at`) rather than re-serializing the frontmatter — re-serializing would
+wraps, plus `set_anchor_at`) rather than re-serializing the frontmatter - re-serializing would
 reorder keys, reflow scalars, and drop the preserved `extra` ordering, burying the one changed line
 in a noisy diff. An unchanged write is therefore byte-identical, which is what keeps a no-op
 `surf verify` from churning the file (and what lets it stamp `id`/`verified_*` provenance only when
 the hash actually changed).
 
-**Boundary:** this module is pure parsing and text editing — it resolves no anchors and computes no
+**Boundary:** this module is pure parsing and text editing - it resolves no anchors and computes no
 hashes; it only produces the structure [`lint`](./cli-lint.md)/[`check`](./cli-check.md) act on.

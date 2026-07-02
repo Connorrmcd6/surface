@@ -3,7 +3,7 @@ summary: Resolving an anchor to the exact span of one symbol, across language fa
 anchors:
   - claim: >
       The generic resolver treats a scope as a *set* of nodes, so a type and its impl/methods
-      (which share a name) both get descended — `Type > method` is unique even when `Type`
+      (which share a name) both get descended - `Type > method` is unique even when `Type`
       alone is ambiguous. Resolves to exactly one *logical symbol* or returns
       NotFound/Ambiguous; usually one node, but a Python @overload group (consecutive
       same-name stubs plus their implementation, in the same scope) counts as one match, so
@@ -28,5 +28,5 @@ refs: []
 
 `resolve_nodes` is the load-bearing primitive: anchor + parsed tree → exact byte/line span.
 TypeScript/Rust/Python use the generic scope-set walk; Go uses `resolve_go`. Python
-`@overload` groups resolve and hash as one unit — stubs and implementation share a single
+`@overload` groups resolve and hash as one unit - stubs and implementation share a single
 token stream and span (#82).
