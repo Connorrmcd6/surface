@@ -53,13 +53,13 @@ anchors:
     at: api/client.py > Client > _request
 ```
 
-Decorators are transparent for *resolution* — `@retry` above `def _request` doesn't change which
-symbol the anchor finds — but they are part of the hashed span, so a decorator swap
+Decorators are transparent for *resolution* - `@retry` above `def _request` doesn't change which
+symbol the anchor finds - but they are part of the hashed span, so a decorator swap
 (`@retry` → `@retry_with_jitter`) **fires**.
 
 - Change the backoff base or the cap → **fires.**
 
-Non-callables anchor too — module constants, type aliases, and class attributes:
+Non-callables anchor too - module constants, type aliases, and class attributes:
 
 ```yaml
 anchors:

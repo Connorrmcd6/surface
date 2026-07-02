@@ -3,7 +3,7 @@ summary: Deterministic, git-free rename detection via stored-hash match.
 anchors:
   - claim: >
       When an anchor no longer resolves, find_renamed walks every current definition and
-      returns the one whose canonical hash equals the claim's stored hash — because the hash
+      returns the one whose canonical hash equals the claim's stored hash - because the hash
       alpha-renames identifiers, a renamed-but-unchanged symbol still matches. No git, no
       similarity threshold.
     at: surf-core/src/rename.rs > find_renamed

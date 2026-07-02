@@ -1,10 +1,10 @@
 ---
-summary: surf verify — re-seal a claim after a human confirms the prose, with optional --follow.
+summary: surf verify - re-seal a claim after a human confirms the prose, with optional --follow.
 anchors:
   - claim: >
       For each claim, plan_claim re-hashes every site (combined) under the current recipe when
       all resolve, returning Unchanged only when the stored stamp already matches that recipe's
-      stamp, else Hash to re-stamp — so one pass also upgrades a still-matching v1 stamp to v2.
+      stamp, else Hash to re-stamp - so one pass also upgrades a still-matching v1 stamp to v2.
       Under --follow, a site that no longer resolves re-points a renamed single-segment anchor
       via find_renamed; a site whose file is unreadable asks git where it moved and re-points the
       path (only when the code is otherwise unchanged under the stored recipe). Otherwise it skips

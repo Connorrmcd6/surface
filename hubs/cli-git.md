@@ -1,5 +1,5 @@
 ---
-summary: Best-effort git queries for scoping and rename-following — advisory only, the gate never depends on them.
+summary: Best-effort git queries for scoping and rename-following - advisory only, the gate never depends on them.
 anchors:
   - claim: >
       Every query here is best-effort and advisory: each returns None/empty when git can't answer
@@ -38,7 +38,7 @@ refs:
 
 # git helpers
 
-A thin wrapper over `git` via `std::process::Command` — no `git2` dependency.
+A thin wrapper over `git` via `std::process::Command` - no `git2` dependency.
 
 **The one distinction that matters:** these only *enrich* the gate; they never decide it. `check`'s
 verdict is computed from anchored code alone, so a missing or broken git environment degrades the
@@ -50,5 +50,5 @@ The five helpers split by job: `changed_files` diff-scopes `surf check --base`; 
 in `lint`/`verify` (symbol renames are [`rename.md`](./rename.md)). The first claim seals the
 contract they all share; the rest pin down the non-trivial mechanics.
 
-**Boundary:** nothing here is part of the deterministic verdict, and none of these mutate the repo —
+**Boundary:** nothing here is part of the deterministic verdict, and none of these mutate the repo -
 they only read git state.

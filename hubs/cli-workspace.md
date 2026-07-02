@@ -1,5 +1,5 @@
 ---
-summary: Workspace discovery and hub enumeration — the I/O layer over the pure config parser.
+summary: Workspace discovery and hub enumeration - the I/O layer over the pure config parser.
 anchors:
   - claim: >
       discover walks up from a starting directory to the nearest surf.toml (like git/ruff),
@@ -26,7 +26,7 @@ This is the I/O layer that sits over the pure config parser ([`config.md`](./con
 the project and turns the hub globs into concrete files, so every other command works in terms of a
 resolved root rather than the caller's current directory.
 
-`discover` is what makes `surf` runnable from any subdirectory — it walks up to the nearest
+`discover` is what makes `surf` runnable from any subdirectory - it walks up to the nearest
 `surf.toml` (the same root-finding git and ruff use) and errors if none is found, so a stray
 invocation outside a project fails loudly instead of silently governing nothing. The resolved root
 is the base every anchor path is joined against, and `hub_paths` enumerates the hubs by globbing the
@@ -34,5 +34,5 @@ configured `hubs` patterns and expanding any OKF `bundles` roots (each as `<root
 and deduped. Reserved OKF files swept up this way are classified on `LoadedHub` and skipped by the
 governing commands.
 
-**Boundary:** discovery and enumeration only — it parses no hub bodies and resolves no anchors;
+**Boundary:** discovery and enumeration only - it parses no hub bodies and resolves no anchors;
 that is [`lint`](./cli-lint.md)/[`check`](./cli-check.md)'s job over the files this hands back.

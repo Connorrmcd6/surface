@@ -3,7 +3,7 @@ title: Quickstart
 description: Set up a workspace, anchor a claim to code, and drive the init → new → lint → check → verify loop.
 ---
 
-Set up the workspace, then scaffold a hub — a markdown file whose frontmatter anchors sentences to
+Set up the workspace, then scaffold a hub - a markdown file whose frontmatter anchors sentences to
 code:
 
 ```sh
@@ -30,7 +30,7 @@ Then drive the loop:
 
 ```sh
 surf lint     # does every anchor resolve to exactly one symbol?
-surf check    # the gate — a brand-new claim is "unverified" until you seal it
+surf check    # the gate - a brand-new claim is "unverified" until you seal it
 ```
 
 ```
@@ -38,7 +38,7 @@ UNVERIFIED  hubs/auth.md :: src/auth/refresh.ts > rotateRefreshToken
     run `surf verify`
 ```
 
-You've read the prose and confirmed it's true, so seal it — this writes the hash back into the
+You've read the prose and confirmed it's true, so seal it - this writes the hash back into the
 frontmatter (`verify` only touches that one line):
 
 ```sh
@@ -58,7 +58,7 @@ surf check: 1 divergence(s).
 
 The merge is blocked (non-zero exit) until someone re-reads the sentence. If it still holds,
 `surf verify` re-seals; if it's now false, fix the prose first. Reformatting, comments, or renaming
-a local variable do **not** trip it — only logic does.
+a local variable do **not** trip it - only logic does.
 
 Machine-readable output for tooling and the optional reviewer plugin:
 

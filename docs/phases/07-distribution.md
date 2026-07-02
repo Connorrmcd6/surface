@@ -1,4 +1,4 @@
-# Phase 7 — Distribution & CI integration
+# Phase 7 - Distribution & CI integration
 
 **Goal:** make the gate actually run in a repo. Ship first the channels repos actually
 consume (most *consume the Action*, they don't "install").
@@ -18,7 +18,7 @@ consume (most *consume the Action*, they don't "install").
 >
 > **Deferred (per §10, not yet needed):** aarch64-linux build + musl static target; npm/pip/
 > brew channels. **Not locally verifiable:** the Action/release path needs a tag push +
-> network — the CI self-check exercises the same `surf check` gate on our own PRs instead.
+> network - the CI self-check exercises the same `surf check` gate on our own PRs instead.
 > To cut a release: bump the workspace version and push a `v*` tag.
 
 ## Steps
@@ -26,13 +26,13 @@ consume (most *consume the Action*, they don't "install").
 1. **Static binary** per `(os, arch)`, built in release CI:
    - start with `aarch64-apple-darwin` (this dev machine);
    - add `x86_64-apple-darwin` and `x86_64-unknown-linux-gnu` / `-musl` (Linux is what CI runs).
-2. **GitHub Action wrapper** (`action.yml`) — the primary distribution channel (§10). Runs
-   `surf check` on PRs. **Correct checkout: shallow, not `fetch-depth: 0`** (§9.1) — only a
+2. **GitHub Action wrapper** (`action.yml`) - the primary distribution channel (§10). Runs
+   `surf check` on PRs. **Correct checkout: shallow, not `fetch-depth: 0`** (§9.1) - only a
    shallow merge-base fetch if PR-scoping is enabled.
 3. **pre-commit hook** definition (`.pre-commit-hooks.yaml`) so repos can run `surf check`/`lint` locally.
-4. **`curl | sh` installer** (`install.sh`) — detects `(os, arch)`, downloads the matching release binary.
+4. **`curl | sh` installer** (`install.sh`) - detects `(os, arch)`, downloads the matching release binary.
 5. **Defer** npm (shim + per-platform `optionalDependencies`, never a `postinstall`
-   downloader), pip (`maturin` wheels), and brew (§10) — don't ship channels nobody uses yet.
+   downloader), pip (`maturin` wheels), and brew (§10) - don't ship channels nobody uses yet.
 
 ## Files touched
 - `.github/workflows/release.yml` (build + upload per-target binaries)

@@ -1,5 +1,5 @@
 ---
-summary: surf stats — git-history adoption metrics (rubber-stamp + in-place rates); advisory, never a gate.
+summary: surf stats - git-history adoption metrics (rubber-stamp + in-place rates); advisory, never a gate.
 anchors:
   - claim: >
       run computes the two metrics and prints them human-readable or as a versioned envelope; it
@@ -9,7 +9,7 @@ anchors:
     hash: 2:7bcce388adbb
   - claim: >
       compute reads the whole since/until window from one streamed git log and scores each
-      non-merge commit, propagating hub claim state incrementally — a commit inherits its first
+      non-merge commit, propagating hub claim state incrementally - a commit inherits its first
       parent's state unless it touched a hub path, and merges carry state but never count. A
       rubber-stamp event is an already-sealed claim whose stored hash value changed in a commit;
       it counts toward the rubber-stamp numerator only when the claim's prose was unchanged. A
@@ -27,7 +27,7 @@ refs: []
 
 The proposal's adopt/kill signals (§9.2), computed deterministically from git history. `compute`
 reads the whole window from a single streamed `git log` (#72) and propagates the hub claim set
-incrementally — a hub is re-read (`git show`) only at commits that touched it, so the spawn count
-scales with hub edits, not history length. Heuristics — one commit per PR, `at:`-site claim
-identity, an in-place denominator that counts any anchored-file edit — are documented in
+incrementally - a hub is re-read (`git show`) only at commits that touched it, so the spawn count
+scales with hub edits, not history length. Heuristics - one commit per PR, `at:`-site claim
+identity, an in-place denominator that counts any anchored-file edit - are documented in
 [the stats guide](../docs/guides/stats.md).

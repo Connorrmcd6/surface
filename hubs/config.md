@@ -1,5 +1,5 @@
 ---
-summary: surf.toml parsing — the workspace marker and hub globs.
+summary: surf.toml parsing - the workspace marker and hub globs.
 anchors:
   - claim: >
       surf.toml parses into a Config whose hubs default to ["hubs/*.md"]; unknown keys are
