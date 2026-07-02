@@ -7,6 +7,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-07-02
+
 ### Added
 - **Hubs are now conformant Open Knowledge Format (OKF) concepts — "Surface = OKF + freshness."** A
   hub's frontmatter is a superset of an [OKF](docs/guides/okf.md) concept: it carries OKF's `type`
@@ -349,7 +351,8 @@ Initial release — the MVP gate that surfaces docs↔code divergence.
 - Language support: TypeScript/TSX, JavaScript/JSX, Rust, Python, and Go.
 - Distribution: GitHub Action, pre-commit hook, and `install.sh`; Apache-2.0 license.
 
-[Unreleased]: https://github.com/Connorrmcd6/surface/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/Connorrmcd6/surface/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/Connorrmcd6/surface/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/Connorrmcd6/surface/compare/v0.6.3...v0.7.0
 [0.6.3]: https://github.com/Connorrmcd6/surface/compare/v0.6.2...v0.6.3
 [0.6.2]: https://github.com/Connorrmcd6/surface/compare/v0.6.1...v0.6.2
