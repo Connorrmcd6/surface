@@ -12,7 +12,8 @@ use serde::Serialize;
 use std::process::ExitCode;
 use surf_core::{
     combine_site_hashes, find_renamed, format_stamp, hash_anchor_raw, hash_anchor_with,
-    parse_anchor, parse_hub, parse_stamp, set_anchor_at, set_anchor_hash, HashOpts, Recipe,
+    parse_anchor, parse_hub, parse_stamp, set_anchor_at, set_anchor_field, set_anchor_hash, Claim,
+    HashOpts, Recipe,
 };
 
 enum Plan {
@@ -88,6 +89,8 @@ fn print_human(report: &VerifyReport) {
 fn verify_all(ws: &Workspace, target: Option<&str>, follow: bool) -> Result<VerifyReport> {
     let mut report = VerifyReport::default();
     let mut matched_any = false;
+    // Monotonic per-run counter so two claims stamped in the same instant get distinct ids.
+    let mut id_seed = 0u64;
 
     for hub_path in ws.hub_paths()? {
         let rel = hub_path
@@ -113,7 +116,9 @@ fn verify_all(ws: &Workspace, target: Option<&str>, follow: bool) -> Result<Veri
             let at = sites.join("  +  ");
 
             let outcome = match plan_claim(ws, claim, follow) {
-                Plan::Hash(new_hash) => match set_anchor_hash(&text, idx, &new_hash) {
+                Plan::Hash(new_hash) => match set_anchor_hash(&text, idx, &new_hash)
+                    .and_then(|t| stamp_provenance(&t, idx, claim, ws, &mut id_seed))
+                {
                     Some(updated) => {
                         text = updated;
                         report.stamped += 1;
@@ -129,6 +134,7 @@ fn verify_all(ws: &Workspace, target: Option<&str>, follow: bool) -> Result<Veri
                 Plan::Follow { new_at, new_hash } => {
                     match set_anchor_at(&text, idx, &new_at)
                         .and_then(|t| set_anchor_hash(&t, idx, &new_hash))
+                        .and_then(|t| stamp_provenance(&t, idx, claim, ws, &mut id_seed))
                     {
                         Some(updated) => {
                             text = updated;
@@ -297,6 +303,69 @@ fn site_hash(ws: &Workspace, site: &str, opts: HashOpts) -> std::result::Result<
     hash_anchor_raw(&source, lang, &anchor, opts, Recipe::CURRENT).map_err(|e| e.to_string())
 }
 
+/// Record the freshness provenance OKF omits — *only* when the hash actually changed (this runs on
+/// `Plan::Hash`/`Plan::Follow`, never on `Plan::Unchanged`), so a no-op re-verify stays
+/// byte-identical. Assigns a stable `id` the first time a claim is stamped and never regenerates it,
+/// so the identity survives later prose/anchor edits. `verified_commit` is best-effort (omitted when
+/// git can't answer); the *who* is deliberately not recorded — git blame on the hub has it, and
+/// keeping author emails out of tracked files matters for public repos.
+fn stamp_provenance(
+    text: &str,
+    idx: usize,
+    claim: &Claim,
+    ws: &Workspace,
+    id_seed: &mut u64,
+) -> Option<String> {
+    let mut out = text.to_string();
+    if claim.id.is_none() {
+        out = set_anchor_field(&out, idx, "id", &new_claim_id(id_seed))?;
+    }
+    out = set_anchor_field(&out, idx, "verified_at", &iso8601_utc_now())?;
+    if let Some(sha) = git::head_sha(&ws.root) {
+        out = set_anchor_field(&out, idx, "verified_commit", &sha)?;
+    }
+    Some(out)
+}
+
+/// A stable, opaque, content-independent claim id. Written once and never regenerated, so a claim's
+/// identity is decoupled from its prose and anchor — the substrate for claim timelines.
+fn new_claim_id(seed: &mut u64) -> String {
+    *seed = seed.wrapping_add(1);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    format!("c_{nanos:x}{:04x}", *seed)
+}
+
+/// Current UTC time as an ISO-8601 second-precision string (`2026-07-01T14:30:00Z`), matching OKF's
+/// `timestamp` format. Hand-rolled to avoid a date dependency; the tool is Unix-only.
+fn iso8601_utc_now() -> String {
+    let secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (days, rem) = ((secs / 86_400) as i64, secs % 86_400);
+    let (h, m, s) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    let (y, mo, d) = civil_from_days(days);
+    format!("{y:04}-{mo:02}-{d:02}T{h:02}:{m:02}:{s:02}Z")
+}
+
+/// Howard Hinnant's days-from-civil inverse: days since 1970-01-01 → (year, month, day), proleptic
+/// Gregorian.
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    (if m <= 2 { y + 1 } else { y }, m, d)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,6 +421,99 @@ mod tests {
         assert_eq!(report.errors, 0);
         assert!(report.updated_files.is_empty());
         assert_eq!(fs::read_to_string(root.join("hubs/a.md")).unwrap(), after);
+    }
+
+    #[test]
+    fn verify_stamps_id_and_provenance() {
+        // The freshness OKF omits: a first verify records a stable id plus when/which-commit. The
+        // *who* is deliberately not stored (git blame has it) — no author email in tracked files.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(
+            root,
+            "src/m.rs",
+            "pub fn add(a: i64, b: i64) -> i64 { a + b }\n",
+        );
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "hubs/a.md",
+            "---\nsummary: s\nanchors:\n  - claim: add sums\n    at: src/m.rs > add\n---\n",
+        );
+        let git = |args: &[&str]| {
+            assert!(
+                std::process::Command::new("git")
+                    .current_dir(root)
+                    .args(args)
+                    .status()
+                    .unwrap()
+                    .success(),
+                "git {args:?} failed"
+            );
+        };
+        git(&["init", "-q"]);
+        git(&["config", "user.email", "dev@nansen.ai"]);
+        git(&["config", "user.name", "Dev"]);
+        git(&["add", "."]);
+        git(&["commit", "-q", "-m", "v1"]);
+
+        let ws = Workspace::discover(root).unwrap();
+        let report = verify_all(&ws, None, false).unwrap();
+        assert_eq!(report.stamped, 1);
+
+        let hub = parse_hub(&fs::read_to_string(root.join("hubs/a.md")).unwrap()).unwrap();
+        let c = &hub.frontmatter.anchors[0];
+        assert!(c.hash.is_some());
+        assert!(c.id.as_deref().unwrap().starts_with("c_"), "id: {:?}", c.id);
+        let at = c.verified_at.as_deref().unwrap();
+        assert!(at.ends_with('Z') && at.contains('T'), "verified_at: {at}");
+        assert!(c.verified_commit.is_some());
+    }
+
+    #[test]
+    fn claim_id_is_stable_across_reverify() {
+        // The id is written once and never regenerated: a later re-stamp (code changed) keeps it,
+        // so claim timelines stitch across the change.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "src/m.rs",
+            "pub fn add(a: i64, b: i64) -> i64 { a + b }\n",
+        );
+        write(
+            root,
+            "hubs/a.md",
+            "---\nsummary: s\nanchors:\n  - claim: add sums\n    at: src/m.rs > add\n---\n",
+        );
+        let ws = Workspace::discover(root).unwrap();
+
+        verify_all(&ws, None, false).unwrap();
+        let id1 = parse_hub(&fs::read_to_string(root.join("hubs/a.md")).unwrap())
+            .unwrap()
+            .frontmatter
+            .anchors[0]
+            .id
+            .clone()
+            .unwrap();
+
+        // Change the anchored logic so the next verify re-stamps (Plan::Hash).
+        write(
+            root,
+            "src/m.rs",
+            "pub fn add(a: i64, b: i64) -> i64 { a - b }\n",
+        );
+        let report = verify_all(&ws, None, false).unwrap();
+        assert_eq!(report.stamped, 1, "changed code re-stamps");
+        let id2 = parse_hub(&fs::read_to_string(root.join("hubs/a.md")).unwrap())
+            .unwrap()
+            .frontmatter
+            .anchors[0]
+            .id
+            .clone()
+            .unwrap();
+        assert_eq!(id1, id2, "id must survive a re-stamp");
     }
 
     #[test]

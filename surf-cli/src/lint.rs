@@ -109,12 +109,18 @@ fn lint_workspace(ws: &Workspace) -> Result<Vec<Finding>> {
     // hubs by rel. A malformed hub is absent from the index (it gets its own block below), so a
     // ref into it reads as "does not resolve to a hub" — which it effectively doesn't.
     let loaded = ws.iter_hubs()?;
+    // Reserved OKF files (index.md/log.md) are not concepts: they never carry claims and a `ref`
+    // can't target them, so keep them out of the concept index and skip them below.
     let hub_index: HashMap<&str, &surf_core::Hub> = loaded
         .iter()
+        .filter(|l| l.kind == surf_core::DocKind::Concept)
         .filter_map(|l| l.hub.as_ref().ok().map(|h| (l.rel.as_str(), h)))
         .collect();
 
     for loaded_hub in &loaded {
+        if loaded_hub.kind != surf_core::DocKind::Concept {
+            continue;
+        }
         let rel = loaded_hub.rel.as_str();
         let hub = match &loaded_hub.hub {
             Ok(hub) => hub,
@@ -165,6 +171,8 @@ fn lint_workspace(ws: &Workspace) -> Result<Vec<Finding>> {
         lint_refs(rel, hub, &hub_index, &mut findings);
         lint_claim_log(rel, hub, &mut findings);
         lint_thin_prose(rel, hub, &mut findings);
+        lint_okf_frontmatter(rel, hub, &mut findings);
+        lint_okf_links(ws, rel, hub, &mut findings);
 
         if hub.frontmatter.anchors.len() > MAX_ANCHORS_PER_HUB {
             findings.push(Finding {
@@ -352,6 +360,42 @@ fn lint_refs(
                 ));
             }
         }
+    }
+}
+
+/// OKF cross-links are plain markdown links between concepts. OKF **tolerates** broken links (they
+/// may be not-yet-written knowledge), so this only ever *warns* — it never blocks. Checks local
+/// `.md` links (bundle-relative `/x.md` resolved from the workspace root, or relative `./x.md` from
+/// the hub's directory), skipping URLs, bare `#anchors`, and non-markdown assets. Best-effort: for a
+/// bundle mounted in a subdirectory, an absolute `/x.md` may resolve against the wrong root, so a
+/// spurious warning is possible — never a block.
+fn lint_okf_links(ws: &Workspace, rel: &str, hub: &surf_core::Hub, findings: &mut Vec<Finding>) {
+    for raw in link_targets(&hub.body) {
+        let path = raw.split('#').next().unwrap_or(raw).trim();
+        if path.is_empty()
+            || path.contains("://")
+            || path.starts_with("mailto:")
+            || path.starts_with("//")
+            || !path.ends_with(".md")
+        {
+            continue;
+        }
+        let target = match path.strip_prefix('/') {
+            Some(abs) => abs.to_string(),
+            None => crate::workspace::resolve_ref_path(rel, path),
+        };
+        if target.is_empty() || ws.root.join(&target).is_file() {
+            continue;
+        }
+        findings.push(Finding {
+            severity: Severity::Warn,
+            hub: rel.to_string(),
+            claim: String::new(),
+            at: raw.to_string(),
+            message: format!(
+                "OKF cross-link `{raw}` points at `{target}`, which doesn't exist — fine if it's not-yet-written, else check for a typo (advisory; OKF tolerates broken links)"
+            ),
+        });
     }
 }
 
@@ -554,6 +598,89 @@ fn lint_thin_prose(rel: &str, hub: &surf_core::Hub, findings: &mut Vec<Finding>)
             ),
         });
     }
+}
+
+/// OKF/round-trip advisories on a concept's frontmatter. Relaxing `deny_unknown_fields` (so OKF's
+/// "consumers MUST preserve unknown keys" rule holds) means a typo'd top-level key no longer
+/// hard-blocks — recover that signal as a warning. Also nudge an anchored hub with no
+/// human-readable headline: a hub is an onboarding doc, so a reader needs something to orient on.
+fn lint_okf_frontmatter(rel: &str, hub: &surf_core::Hub, findings: &mut Vec<Finding>) {
+    const KNOWN_KEYS: [&str; 8] = [
+        "anchors",
+        "refs",
+        "covers",
+        "summary",
+        "title",
+        "tags",
+        "timestamp",
+        "type",
+    ];
+    for (k, _) in &hub.frontmatter.extra {
+        let Some(key) = k.as_str() else { continue };
+        if let Some(hit) = KNOWN_KEYS
+            .iter()
+            .find(|known| within_edit_distance_1(key, known))
+        {
+            findings.push(Finding {
+                severity: Severity::Warn,
+                hub: rel.to_string(),
+                claim: String::new(),
+                at: String::new(),
+                message: format!(
+                    "unknown frontmatter key `{key}` — did you mean `{hit}`? (unknown keys are preserved for OKF interop, so a typo no longer hard-blocks the gate)"
+                ),
+            });
+        }
+    }
+
+    if !hub.frontmatter.anchors.is_empty()
+        && hub.frontmatter.summary.is_none()
+        && hub.frontmatter.title.is_none()
+        && !hub.frontmatter.extra.contains_key("description")
+    {
+        findings.push(Finding {
+            severity: Severity::Warn,
+            hub: rel.to_string(),
+            claim: String::new(),
+            at: String::new(),
+            message:
+                "anchored hub has no headline (`summary`, `title`, or `description`) — a hub is an onboarding doc; give readers something to orient on"
+                    .to_string(),
+        });
+    }
+}
+
+/// True when `a` and `b` are one edit apart — a single insert, delete, substitution, or adjacent
+/// transposition. Transposition matters: `anchros` → `anchors` is the classic fat-fingered key and
+/// is only distance 1 once swaps count. Identical strings return `false` (nothing to warn about).
+fn within_edit_distance_1(a: &str, b: &str) -> bool {
+    a != b && osa_distance(a, b) == 1
+}
+
+/// Optimal string alignment distance (Levenshtein plus adjacent transposition). Frontmatter keys
+/// are short, so the full DP is negligible.
+fn osa_distance(a: &str, b: &str) -> usize {
+    let a: Vec<char> = a.chars().collect();
+    let b: Vec<char> = b.chars().collect();
+    let (n, m) = (a.len(), b.len());
+    let mut d = vec![vec![0usize; m + 1]; n + 1];
+    for (i, row) in d.iter_mut().enumerate() {
+        row[0] = i;
+    }
+    d[0] = (0..=m).collect();
+    for i in 1..=n {
+        for j in 1..=m {
+            let cost = usize::from(a[i - 1] != b[j - 1]);
+            let mut best = (d[i - 1][j] + 1)
+                .min(d[i][j - 1] + 1)
+                .min(d[i - 1][j - 1] + cost);
+            if i > 1 && j > 1 && a[i - 1] == b[j - 2] && a[i - 2] == b[j - 1] {
+                best = best.min(d[i - 2][j - 2] + 1);
+            }
+            d[i][j] = best;
+        }
+    }
+    d[n][m]
 }
 
 /// Words of readable body prose, excluding fenced code blocks (``` … ```), which carry no
@@ -1074,6 +1201,115 @@ mod tests {
             .find(|x| x.message.contains("no anchor in"))
             .expect("expected a no-matching-claim error");
         assert_eq!(block.severity, Severity::Block);
+    }
+
+    #[test]
+    fn typo_frontmatter_key_warns_not_blocks() {
+        // `anchros` is one edit from `anchors` → a warning that recovers the fail-closed signal
+        // relaxing deny_unknown_fields gave up. Never a block (OKF preserves unknown keys).
+        let (_t, ws) = ws_with(&[(
+            "hubs/a.md",
+            "---\nsummary: x\nanchros:\n  - claim: c\n    at: src/m.rs > add\n---\n",
+        )]);
+        let f = lint_workspace(&ws).unwrap();
+        let warn = f
+            .iter()
+            .find(|x| x.message.contains("did you mean `anchors`"))
+            .expect("expected a typo warning");
+        assert_eq!(warn.severity, Severity::Warn);
+        assert!(!f.iter().any(|x| x.severity == Severity::Block));
+    }
+
+    #[test]
+    fn unrelated_okf_key_is_not_flagged_as_typo() {
+        // A legitimate OKF/doc-system key (well clear of any known key) must not warn.
+        let (_t, ws) = ws_with(&[
+            ("src/m.rs", "pub fn a() {}\n"),
+            (
+                "hubs/a.md",
+                "---\ntype: Runbook\ndescription: how to deploy\nauthor: rachel\nanchors:\n  - claim: a\n    at: src/m.rs > a\n---\n",
+            ),
+        ]);
+        let f = lint_workspace(&ws).unwrap();
+        assert!(
+            !f.iter().any(|x| x.message.contains("did you mean")),
+            "no typo warning expected: {f:?}"
+        );
+    }
+
+    #[test]
+    fn anchored_hub_without_headline_warns() {
+        // An anchored hub with no summary/title/description reads as a claim dump, not an
+        // onboarding doc.
+        let (_t, ws) = ws_with(&[
+            ("src/m.rs", "pub fn a() {}\n"),
+            (
+                "hubs/a.md",
+                "---\ntype: concept\nanchors:\n  - claim: a does a\n    at: src/m.rs > a\n---\n",
+            ),
+        ]);
+        let f = lint_workspace(&ws).unwrap();
+        let warn = f
+            .iter()
+            .find(|x| x.message.contains("no headline"))
+            .expect("expected a headline warning");
+        assert_eq!(warn.severity, Severity::Warn);
+    }
+
+    #[test]
+    fn reserved_index_file_is_not_linted() {
+        // A plain OKF index.md (no frontmatter) must not produce a block from lint.
+        let (_t, ws) = ws_with(&[("hubs/index.md", "# Sales\n\n- [orders](./orders.md)\n")]);
+        let f = lint_workspace(&ws).unwrap();
+        assert!(f.is_empty(), "reserved file should not be linted: {f:?}");
+    }
+
+    #[test]
+    fn edit_distance_1_matches_only_close_keys() {
+        assert!(within_edit_distance_1("anchros", "anchors")); // adjacent transposition
+        assert!(within_edit_distance_1("anchor", "anchors")); // one deletion
+        assert!(within_edit_distance_1("tag", "tags")); // one insertion
+        assert!(within_edit_distance_1("titel", "title")); // el↔le transposition
+        assert!(!within_edit_distance_1("resource", "anchors")); // unrelated
+        assert!(!within_edit_distance_1("anchors", "anchors")); // identical → no warning
+        assert!(!within_edit_distance_1("tg", "tags")); // two edits away
+    }
+
+    #[test]
+    fn okf_dangling_cross_link_warns_never_blocks() {
+        // A body link to a non-existent concept warns (advisory) but never blocks — OKF tolerates
+        // broken links.
+        let (_t, ws) = ws_with(&[(
+            "hubs/orders.md",
+            "---\ntype: BigQuery Table\ndescription: orders\n---\n# Orders\n\nJoined with [customers](./customers.md).\n",
+        )]);
+        let f = lint_workspace(&ws).unwrap();
+        let warn = f
+            .iter()
+            .find(|x| x.message.contains("OKF cross-link"))
+            .expect("expected a dangling-link warning");
+        assert_eq!(warn.severity, Severity::Warn);
+        assert!(!f.iter().any(|x| x.severity == Severity::Block));
+    }
+
+    #[test]
+    fn okf_resolvable_cross_link_is_silent() {
+        // The link target exists → no warning. URLs and anchors are ignored too.
+        let (_t, ws) = ws_with(&[
+            (
+                "hubs/orders.md",
+                "---\ntype: BigQuery Table\ndescription: orders\n---\n# Orders\n\nSee [customers](./customers.md), the [docs](https://x.io/a.md), and [top](#orders).\n",
+            ),
+            (
+                "hubs/customers.md",
+                "---\ntype: BigQuery Table\ndescription: customers\n---\n# Customers\n",
+            ),
+        ]);
+        let f = lint_workspace(&ws).unwrap();
+        assert!(
+            !f.iter().any(|x| x.message.contains("OKF cross-link")),
+            "no dangling-link warning expected: {f:?}"
+        );
     }
 
     fn agents_findings(ws: &Workspace) -> Vec<Finding> {

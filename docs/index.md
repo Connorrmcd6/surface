@@ -91,6 +91,16 @@ If you want the fuzzy "is this claim still true" judgment, that lives in an **op
 plugin that reads Surface's JSON output. The core never depends on it. Pull every plugin out and
 the gate blocks and passes exactly the same.
 
+## Interoperable: Surface speaks OKF
+
+A hub is a **conformant [Open Knowledge Format](./guides/okf.md) concept** — Google's vendor-neutral
+standard for knowledge as markdown + frontmatter. OKF standardizes *how knowledge is written down*
+but deliberately omits **freshness**: it has no notion of whether the thing a document describes has
+changed. That omission is precisely what Surface is. So the relationship is clean: **Surface = OKF +
+the freshness OKF leaves out.** Your hubs drop into any OKF consumer (Google's Knowledge Catalog,
+the OKF visualizer, Obsidian, git-backed doc editors), which read the knowledge and ignore the
+`anchors:` Surface governs. See [Surface and OKF](./guides/okf.md).
+
 ## Is Surface for you?
 
 Honestly? Maybe not. Roughly, it earns its keep when
@@ -116,5 +126,5 @@ Agents are a multiplier, not the foundation.
 ## Next
 
 - [Install](./getting-started/install.md) · [Quickstart](./getting-started/quickstart.md)
-- [Authoring hubs](./guides/authoring-hubs.md) · [CI integration](./guides/ci-integration.md) · [Examples](./examples.md)
+- [Authoring hubs](./guides/authoring-hubs.md) · [CI integration](./guides/ci-integration.md) · [Surface and OKF](./guides/okf.md) · [Examples](./examples.md)
 - Reference: [Commands](./reference/commands.md) · [Configuration](./reference/configuration.md) · [How the gate works](./reference/how-it-works.md) · [Hash recipes](./reference/hash-recipes.md) · [FAQ](./reference/faq.md)

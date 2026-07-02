@@ -73,6 +73,11 @@ fn check_workspace(
     let mut stale: HashMap<&str, Vec<Vec<String>>> = HashMap::new();
 
     for loaded_hub in &loaded {
+        // OKF reserved files (index.md/log.md) hold no claims — never governed, and a missing
+        // frontmatter fence must not fail the gate closed the way a malformed *concept* does.
+        if loaded_hub.kind != surf_core::DocKind::Concept {
+            continue;
+        }
         let rel = loaded_hub.rel.as_str();
         let hub = match &loaded_hub.hub {
             Ok(hub) => hub,
@@ -119,6 +124,9 @@ fn propagate_refs(
 ) -> Vec<Divergence> {
     let mut out = Vec::new();
     for loaded_hub in loaded {
+        if loaded_hub.kind != surf_core::DocKind::Concept {
+            continue;
+        }
         let Ok(hub) = &loaded_hub.hub else { continue };
         for raw in &hub.frontmatter.refs {
             let Ok(parsed) = parse_ref(raw) else { continue };
@@ -151,6 +159,7 @@ fn propagate_refs(
                 claim: String::new(),
                 at: raw.clone(),
                 kind: DivergenceKind::ReferencedStale,
+                id: None,
                 old_hash: None,
                 new_hash: None,
                 old_code: None,
@@ -170,6 +179,7 @@ fn malformed_hub_divergence(hub: &str, err: &HubError) -> Divergence {
         claim: String::new(),
         at: String::new(),
         kind: DivergenceKind::Unresolvable,
+        id: None,
         old_hash: None,
         new_hash: None,
         old_code: None,
@@ -276,6 +286,7 @@ fn check_claim(ws: &Workspace, hub: &str, claim: &surf_core::Claim, base: &str) 
             claim: prose.clone(),
             at: at_display.clone(),
             kind,
+            id: claim.id.clone(),
             old_hash,
             new_hash,
             old_code,
@@ -625,6 +636,61 @@ mod tests {
             d[0].detail.as_deref(),
             Some("unsupported file type: schema.sql")
         );
+    }
+
+    #[test]
+    fn okf_reserved_index_file_does_not_block() {
+        // An OKF `index.md` (directory listing, no frontmatter fence) is swept up by the
+        // `hubs/*.md` glob but must never fail the gate closed the way a malformed concept does.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "hubs/index.md",
+            "# Sales\n\n- [orders](./orders.md)\n",
+        );
+        assert!(check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0
+            .is_empty());
+    }
+
+    #[test]
+    fn anchor_less_okf_concept_passes() {
+        // A concept carrying only OKF fields (no code anchors) is valid and ungoverned — it
+        // contributes zero divergences.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "hubs/orders.md",
+            "---\ntype: BigQuery Table\ndescription: one row per order\ntags: [sales]\n---\n# Orders\n",
+        );
+        assert!(check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0
+            .is_empty());
+    }
+
+    #[test]
+    fn unknown_frontmatter_key_no_longer_blocks_check() {
+        // Relaxing deny_unknown_fields for OKF interop means a typo'd key (`anchros:`) is now kept
+        // in `extra` instead of hard-blocking the gate — the lost signal is recovered by `surf lint`.
+        let tmp = tempfile::tempdir().unwrap();
+        let root = tmp.path();
+        write(root, "surf.toml", "");
+        write(
+            root,
+            "hubs/a.md",
+            "---\nsummary: x\nanchros:\n  - claim: c\n    at: src/m.rs > add\n---\n",
+        );
+        // Parses (typo'd `anchros` is preserved, real `anchors` is empty) → no divergence.
+        assert!(check_workspace(&ws_at(root.to_path_buf()), None, &[])
+            .unwrap()
+            .0
+            .is_empty());
     }
 
     #[test]

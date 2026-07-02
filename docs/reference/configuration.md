@@ -30,6 +30,42 @@ layout and the trade-offs).
 > derived from the first pattern (e.g. `docs/hubs/*.md` → `docs/hubs/`); the other patterns are
 > still linted and verified normally, they're just not where `new` writes.
 
+## OKF bundles
+
+To govern an [Open Knowledge Format](../guides/okf.md) bundle — a directory *tree* of concept files
+rather than a flat folder — list its root(s) under `bundles`. Each root expands to `<root>/**/*.md`:
+
+```toml
+hubs    = ["hubs/*.md"]        # optional; flat layout
+bundles = ["knowledge/sales"]  # an in-repo OKF bundle (recursively)
+```
+
+`hubs` and `bundles` are unioned. OKF reserved files (`index.md`, `log.md`) swept up by a bundle
+glob are recognized and **skipped for governance** — they hold no claims, so a missing frontmatter
+fence in them never blocks the gate.
+
+## Frontmatter fields
+
+A hub is a **superset of an OKF concept**, so its frontmatter carries both OKF fields and Surface's
+governance fields:
+
+| Field | Source | Notes |
+| --- | --- | --- |
+| `type` | OKF | The one field OKF requires. Defaults to `concept` when absent (existing hubs keep working). |
+| `title` | OKF | Display name. |
+| `summary` | Surface | The onboarding one-liner (optional). Distinct from OKF `description`. |
+| `tags` | OKF | Cross-cutting tags. |
+| `timestamp` | OKF | Last *modified* (ISO 8601). Distinct from a claim's `verified_at` (last *attested*). |
+| `anchors` | Surface | The claims — the governed part. See [Authoring hubs](../guides/authoring-hubs.md). |
+| `refs` / `covers` | Surface | Composition edges and advisory coverage globs. |
+| *(any other key)* | OKF / tools | Preserved verbatim (e.g. OKF `description`/`resource`, a doc system's `author`/`created`). |
+
+Unknown *frontmatter* keys are preserved, not rejected (the OKF rule); a key that looks like a typo
+of a known one earns a `surf lint` warning. Unknown keys **inside an anchor item** still fail
+closed. Each claim also gains freshness provenance the first time `surf verify` stamps it: a stable
+`id`, plus `verified_at` and `verified_commit` (the *who* is left to git blame, so no author email
+lands in tracked files).
+
 ## Languages
 
 TypeScript (`.ts`, `.tsx`, `.mts`, `.cts`), JavaScript/JSX (`.js`, `.jsx`, `.mjs`, `.cjs`), Rust
