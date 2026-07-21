@@ -39,6 +39,7 @@ Deterministic. No model, no network, no API key in the core.
 **Docs:** [surface.gradientdev.xyz](https://surface.gradientdev.xyz) · **Install:** [`docs/getting-started/install.md`](docs/getting-started/install.md)
 
 [![BundleDex](https://bundledex.net/badge/surface.svg)](https://bundledex.net/bundles/surface/)
+[![OKF BundleDex](https://bundledex.net/static-badge.svg)](https://bundledex.net)
 
 ---
 
