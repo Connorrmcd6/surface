@@ -6,18 +6,7 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-version=$(awk '
-  /^\[workspace\.package\]/ { in_ws = 1; next }
-  /^\[/ { in_ws = 0 }
-  in_ws && /^version *= *"/ {
-    match($0, /"[^"]+"/); print substr($0, RSTART + 1, RLENGTH - 2); exit
-  }
-' Cargo.toml)
-
-if [ -z "$version" ]; then
-  echo "error: could not read [workspace.package] version from Cargo.toml" >&2
-  exit 1
-fi
+version=$(sh scripts/workspace-version.sh)
 
 files=$(grep -rlE 'Connorrmcd6/surface@v[0-9]+\.[0-9]+\.[0-9]+' README.md docs || true)
 if [ -z "$files" ]; then

@@ -15,8 +15,10 @@ inputs:
     description: Arguments passed to surf (e.g. "check" or "check --format json").
     default: check
   version:
-    description: Release tag to install (e.g. v0.1.0), or "latest".
-    default: latest
+    description: >-
+      Release tag to install (e.g. v0.1.0), or "latest" for the newest release. Defaults to the
+      version bundled at this action ref, so pinning `uses:` also pins the binary.
+    default: ""
   working-directory:
     description: Directory to run surf in (must contain or sit under a surf.toml).
     default: .
@@ -29,10 +31,25 @@ runs:
       env:
         SURF_VERSION: ${{ inputs.version }}
         SURF_INSTALL_DIR: ${{ runner.temp }}/surf-bin
-      # Run the installer bundled at the *pinned* action ref rather than the mutable
-      # main branch, so a SHA-pinned `uses:` also pins the installer script
-      # (defense-in-depth; install.sh already checksum-verifies the download).
-      run: sh "${{ github.action_path }}/install.sh"
+        ACTION_PATH: ${{ github.action_path }}
+      # Both the installer and the version it installs come from the *pinned* action ref rather
+      # than the mutable main branch or the floating `latest` release, so a SHA-pinned `uses:`
+      # pins the binary too (#169; the installer half was #118). An explicit `version:` still
+      # wins, and `version: latest` opts back into tracking the newest release.
+      run: |
+        if [ -z "$SURF_VERSION" ]; then
+          bundled="$(sh "$ACTION_PATH/scripts/workspace-version.sh")" || bundled=""
+          # Fail closed: falling back to `latest` here would silently restore the floating
+          # install this default exists to prevent.
+          if [ -z "$bundled" ]; then
+            echo "surf: could not read the bundled version at this action ref" >&2
+            echo "surf: set the action's \`version:\` input explicitly (e.g. version: v0.8.0)" >&2
+            exit 1
+          fi
+          SURF_VERSION="v$bundled"
+        fi
+        export SURF_VERSION
+        sh "$ACTION_PATH/install.sh"
     - name: Run surf
       shell: bash
       working-directory: ${{ inputs.working-directory }}
