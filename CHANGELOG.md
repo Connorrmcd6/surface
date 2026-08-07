@@ -7,6 +7,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **The Action installs the release that ships with the ref you pinned, instead of `latest`.** The
+  `version` input defaulted to `latest`, so a workflow pinned to a commit SHA still resolved the
+  newest release at run time - a new release could flip a `surf check` verdict on a repo whose
+  workflow file and hubs had not changed. It now defaults to the workspace version bundled at the
+  pinned action ref, completing for the binary what #118 did for the installer script. An explicit
+  `version:` still wins, and `version: latest` restores the floating behaviour.
+
 ## [0.8.0] - 2026-07-02
 
 ### Added

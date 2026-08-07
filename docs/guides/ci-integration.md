@@ -22,9 +22,23 @@ jobs:
       - uses: Connorrmcd6/surface@v0.8.0
 ```
 
-The action takes `args` (default `check`), `version` (default `latest`), and
-`working-directory` (default `.`). To emit machine-readable output for another job or a reviewer
-bot, set `args: check --format json`.
+The action takes `args` (default `check`), `version`, and `working-directory` (default `.`). To
+emit machine-readable output for another job or a reviewer bot, set `args: check --format json`.
+
+### Which binary you get
+
+`version` defaults to the release that ships with the action ref you pinned - `uses:
+Connorrmcd6/surface@v0.8.0` installs `surf` v0.8.0, and a commit-SHA pin resolves the same way.
+So the gate's behaviour only changes when you move the pin, and a `surf check` verdict is
+reproducible for as long as the workflow file stays put.
+
+To track the newest release instead, ask for it explicitly:
+
+```yaml
+- uses: Connorrmcd6/surface@v0.8.0
+  with:
+    version: latest       # or a specific tag, e.g. v0.7.0
+```
 
 ### Checkout depth
 
